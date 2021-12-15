@@ -1,0 +1,244 @@
+package api
+
+import (
+	"bytes"
+	"context"
+	"encoding/hex"
+	"fmt"
+	"strconv"
+
+	"github.cbhq.net/nodes/rosetta-flow/indexdb"
+	"github.cbhq.net/nodes/rosetta-flow/model"
+	"github.com/coinbase/rosetta-sdk-go/types"
+)
+
+// Block implements the /block endpoint.
+func (s *Server) Block(ctx context.Context, r *types.BlockRequest) (*types.BlockResponse, *types.Error) {
+	if s.Offline {
+		return nil, errOfflineMode
+	}
+	data, xerr := s.getBlock(r.BlockIdentifier)
+	if xerr != nil {
+		return nil, xerr
+	}
+	txns := make([]*types.Transaction, len(data.Block.Transactions))
+	for i, txn := range data.Block.Transactions {
+		txns[i] = s.convertTransaction(txn)
+	}
+	return &types.BlockResponse{
+		Block: &types.Block{
+			BlockIdentifier: &types.BlockIdentifier{
+				Hash:  hex.EncodeToString(data.Hash),
+				Index: int64(data.Height),
+			},
+			ParentBlockIdentifier: &types.BlockIdentifier{
+				Hash:  hex.EncodeToString(data.ParentHash),
+				Index: int64(data.ParentHeight),
+			},
+			Timestamp:    int64(data.Block.Timestamp / 1000000),
+			Transactions: txns,
+		},
+	}, nil
+}
+
+// BlockTransaction implements the /block/transaction endpoint.
+func (s *Server) BlockTransaction(ctx context.Context, r *types.BlockTransactionRequest) (*types.BlockTransactionResponse, *types.Error) {
+	if s.Offline {
+		return nil, errOfflineMode
+	}
+	if r.BlockIdentifier == nil {
+		return nil, errInvalidBlockIdentifier
+	}
+	if r.TransactionIdentifier == nil {
+		return nil, errInvalidTransactionHash
+	}
+	txhash, err := hex.DecodeString(r.TransactionIdentifier.Hash)
+	if err != nil {
+		return nil, wrapErr(errInvalidTransactionHash, err)
+	}
+	data, xerr := s.getBlock(&types.PartialBlockIdentifier{
+		Hash:  types.String(r.BlockIdentifier.Hash),
+		Index: types.Int64(r.BlockIdentifier.Index),
+	})
+	if xerr != nil {
+		return nil, xerr
+	}
+	for _, txn := range data.Block.Transactions {
+		if bytes.Equal(txn.Hash, txhash) {
+			return &types.BlockTransactionResponse{
+				Transaction: s.convertTransaction(txn),
+			}, nil
+		}
+	}
+	return nil, errUnknownTransactionHash
+}
+
+func (s *Server) convertTransaction(txn *model.IndexedTransaction) *types.Transaction {
+	ops := []*types.Operation{}
+	for _, src := range txn.Operations {
+		switch src.Type {
+		case model.OperationType_FEE:
+			ops = append(ops, &types.Operation{
+				Account: &types.AccountIdentifier{
+					Address: "0x" + hex.EncodeToString(src.Account),
+				},
+				Amount: &types.Amount{
+					Currency: flowCurrency,
+					Value:    strconv.FormatInt(-int64(src.Amount), 10),
+				},
+				OperationIdentifier: &types.OperationIdentifier{
+					Index: int64(len(ops)),
+				},
+				Status: types.String(statusSuccess),
+				Type:   opFee,
+			})
+		case model.OperationType_TRANSFER, model.OperationType_PROXY_TRANSFER:
+			typ := opTransfer
+			if src.Type == model.OperationType_PROXY_TRANSFER {
+				typ = opProxyTransfer
+			}
+			sender := false
+			if len(src.Account) > 0 {
+				ops = append(ops, &types.Operation{
+					Account: &types.AccountIdentifier{
+						Address: "0x" + hex.EncodeToString(src.Account),
+					},
+					Amount: &types.Amount{
+						Currency: flowCurrency,
+						Value:    strconv.FormatInt(-int64(src.Amount), 10),
+					},
+					OperationIdentifier: &types.OperationIdentifier{
+						Index: int64(len(ops)),
+					},
+					Status: types.String(statusSuccess),
+					Type:   typ,
+				})
+				sender = true
+			}
+			if len(src.Receiver) > 0 {
+				op := &types.Operation{
+					Account: &types.AccountIdentifier{
+						Address: "0x" + hex.EncodeToString(src.Receiver),
+					},
+					Amount: &types.Amount{
+						Currency: flowCurrency,
+						Value:    strconv.FormatUint(src.Amount, 10),
+					},
+					OperationIdentifier: &types.OperationIdentifier{
+						Index: int64(len(ops)),
+					},
+					Status: types.String(statusSuccess),
+					Type:   typ,
+				}
+				if sender {
+					op.RelatedOperations = []*types.OperationIdentifier{{
+						Index: int64(len(ops) - 1),
+					}}
+				}
+				ops = append(ops, op)
+			}
+		case model.OperationType_CREATE_ACCOUNT:
+			op := &types.Operation{
+				Account: &types.AccountIdentifier{
+					Address: "0x" + hex.EncodeToString(src.Account),
+				},
+				OperationIdentifier: &types.OperationIdentifier{
+					Index: int64(len(ops)),
+				},
+				Status: types.String(statusSuccess),
+				Type:   opCreateAccount,
+			}
+			if len(src.ProxyPublicKey) > 0 {
+				op.Metadata = map[string]interface{}{
+					"proxy_public_key": hex.EncodeToString(src.ProxyPublicKey),
+				}
+				op.Type = opCreateProxyAccount
+			}
+			ops = append(ops, op)
+		default:
+			panic(fmt.Errorf("api: unknown indexed operation type: %d (%s)", src.Type, src.Type))
+		}
+	}
+	md := map[string]interface{}{
+		"error_message": txn.ErrorMessage,
+		"failed":        txn.Failed,
+	}
+	if len(txn.Events) > 0 {
+		md["events"] = encodeTransferEvents(txn.Events)
+	} else {
+		md["events"] = []*transferEvent{}
+	}
+	return &types.Transaction{
+		Metadata:   md,
+		Operations: ops,
+		TransactionIdentifier: &types.TransactionIdentifier{
+			Hash: hex.EncodeToString(txn.Hash),
+		},
+	}
+}
+
+func (s *Server) getBlock(id *types.PartialBlockIdentifier) (*indexdb.BlockData, *types.Error) {
+	if id == nil {
+		return nil, errInvalidBlockIdentifier
+	}
+	if id.Index != nil {
+		height := *id.Index
+		if height < int64(s.genesis.Height) {
+			return nil, errInvalidBlockIndex
+		}
+		if height == int64(s.genesis.Height) {
+			return s.genesisBlock()
+		}
+		data, err := s.Index.BlockByHeight(uint64(height))
+		if err != nil {
+			return nil, wrapErr(errInternal, err)
+		}
+		return data, nil
+	}
+	if id.Hash != nil {
+		raw := *id.Hash
+		if len(raw) != 64 {
+			return nil, errInvalidBlockHash
+		}
+		hash, err := hex.DecodeString(raw)
+		if err != nil {
+			return nil, wrapErr(errInvalidBlockHash, err)
+		}
+		if bytes.Equal(hash, s.genesis.Hash) {
+			return s.genesisBlock()
+		}
+		data, err := s.Index.BlockByHash(hash)
+		if err != nil {
+			return nil, wrapErr(errInternal, err)
+		}
+		return data, nil
+	}
+	return nil, errInvalidBlockIdentifier
+}
+
+func (s *Server) genesisBlock() (*indexdb.BlockData, *types.Error) {
+	return &indexdb.BlockData{
+		Block: &model.IndexedBlock{
+			Timestamp: s.genesis.Timestamp,
+		},
+		Hash:         s.genesis.Hash,
+		Height:       s.genesis.Height,
+		ParentHash:   s.genesis.Hash,
+		ParentHeight: s.genesis.Height,
+	}, nil
+}
+
+func encodeTransferEvents(src []*model.TransferEvent) []*transferEvent {
+	events := make([]*transferEvent, len(src))
+	for i, event := range src {
+		dst := &transferEvent{
+			Amount: strconv.FormatUint(event.Amount, 10),
+			Type:   event.Type.String(),
+		}
+		if len(event.Account) > 0 {
+			dst.Account = "0x" + hex.EncodeToString(event.Account)
+		}
+		events[i] = dst
+	}
+	return events
+}
