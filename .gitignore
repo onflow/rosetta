@@ -1,0 +1,10 @@
+.DS_Store
+
+/.vscode/
+/cli-conf/data-mainnet/
+/cli-conf/data-testnet/
+/cli-conf/result-mainnet.json
+/cli-conf/result-testnet.json
+/data/
+/.idea
+/server

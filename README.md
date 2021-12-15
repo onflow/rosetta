@@ -1,0 +1,443 @@
+This repo implements the [Rosetta API] for the [Flow blockchain].
+
+## Shortcomings
+
+This implementation has various shortcomings:
+
+* We use the events generated from Flow transactions to infer changes in account
+  balances. Since the events on Flow do not fully track the movement of
+  resources on-chain, these events will not 100% match the on-chain balance
+  changes.
+
+* In order to support balance reconciliation by `rosetta-cli check:data`, we
+  only track balance changes for accounts created by the configured
+  `originators` or any of its "descendants".
+
+* For our balance tracking of these accounts to remain valid, they must never be
+  used in any "non-standard" transactions, e.g. moving FLOW to non-default Vault
+  resources, splitting a withdrawal across multiple deposits, etc.
+
+* Since Flow effectively hard forks every spork, the Access API may serve block
+  data from an old spork that is then not part of the next spork. If the Rosetta
+  Node isn't shutdown in time, then it's possible for invalid data to be
+  processed and indexed.
+
+* We can partially mitigate this by restarting the Rosetta Node with an
+  appropriate block height to `RESYNC_FROM`. However, if other services have
+  consumed the previously indexed data from the Rosetta Node, these will also
+  need to be reset.
+
+* Since the last few blocks in a spork don't have corresponding seals with
+  execution results, the events we receive for those blocks cannot be verified
+  through the Access API. It is therefore possible for us to process invalid
+  data for those blocks.
+
+* If the Access API servers aren't properly maintained and configured for
+  individual sporks, then it could result in data availability issues.
+
+* It needs to be actively reconfigured and restarted with every new spork. Some
+  of this data can be derived from the [sporks.json] data that is maintained by
+  Dapper Labs. If there are any delays or inaccuracies in those updates, this
+  would result in downtime.
+
+* Rosetta assumes that a transaction hash uniquely identifies a transaction
+  within a block. Unfortunately, in Flow, the same transaction hash can be
+  included multiple times within the same block by being included in different
+  collections. In `/block/transaction` responses, we only include the first such
+  transaction in a block.
+
+## Installation
+
+```bash
+# download and install dependencies
+make deps
+
+# build
+make build
+```
+
+### Running interactively in Docker
+
+```
+docker build -t flow .
+
+docker run -it -v $(pwd):/app/src/rosetta-flow flow bash
+
+# first time
+make
+
+# when making changes
+make go-build
+
+./server <config>
+
+```
+
+---
+
+_**Note:**_ Since [flow-go] can't be built like a normal Go module, you need to first
+compile a [relic build] by running: `./environ/build-relic.py`. This is covered by the `make build` target.
+
+And then use `-tags relic` when building or running `cmd/server`.
+
+## Creating Accounts via the Rosetta Construction API
+
+Flow requires accounts to be created with specific public keys on-chain before
+they can be used. Our implementation provides a `create_account` operation type
+to support this via the Rosetta Construction API.
+
+The following provides a high-level walkthrough of the request/response flows
+for creating accounts via the API.
+
+Start by sending the following with the right `public_key` and `payer` values to
+`/construction/preprocess`:
+
+```json
+{
+  "network_identifier": {
+    "blockchain": "flow",
+    "network": "testnet"
+  },
+  "operations": [
+    {
+      "operation_identifier": {
+        "index": 0
+      },
+      "type": "create_account",
+      "metadata": {
+        "public_key": "0395028a149fe0c961ff9d3623fc83e2ecd1f35071c6725f7a4f495c9e13f23d23"
+      }
+    }
+  ],
+  "metadata": {
+    "payer": "0x2a0a5a914734365d"
+  }
+}
+```
+
+The secp256k1 `public_key` needs to be in SEC compressed format (33 bytes) and
+`payer` needs to be one of the originator accounts.
+
+This will respond with something like:
+
+```json
+{
+  "options": {
+    "protobuf": "1a082a0a5a914734365d30ffffffffffffffffff01"
+  }
+}
+```
+
+Pass the `options` through to the `/construction/metadata` call:
+
+```json
+{
+  "network_identifier": {
+    "blockchain": "flow",
+    "network": "testnet"
+  },
+  "options": {
+    "protobuf": "1a082a0a5a914734365d30ffffffffffffffffff01"
+  }
+}
+```
+
+This will respond with something like:
+
+```json
+{
+  "metadata": {
+    "protobuf": "0a207451aecfd37612fa8fd1fc5e75abaa821977d75c7c6f9f37ef336036be105c291a082a0a5a914734365d3002"
+  }
+}
+```
+
+Then pass that through to the `/construction/payloads` call using the same
+`public_key` as previously:
+
+```json
+{
+  "network_identifier": {
+    "blockchain": "flow",
+    "network": "testnet"
+  },
+  "operations": [
+    {
+      "operation_identifier": {
+        "index": 0
+      },
+      "type": "create_account",
+      "metadata": {
+        "public_key": "0395028a149fe0c961ff9d3623fc83e2ecd1f35071c6725f7a4f495c9e13f23d23"
+      }
+    }
+  ],
+  "metadata": {
+    "protobuf": "0a207451aecfd37612fa8fd1fc5e75abaa821977d75c7c6f9f37ef336036be105c291a082a0a5a914734365d3002"
+  }
+}
+```
+
+This will respond with something like:
+
+```json
+{
+  "payloads": [
+    {
+      "account_identifier": {
+        "address": "0x2a0a5a914734365d"
+      },
+      "address": "0x2a0a5a914734365d",
+      "hex_bytes": "885ddb54d4029e2092d6bc047e69d8f396ab56b9a8b03ccc5a0329e6efbbce0e",
+      "signature_type": "ecdsa"
+    }
+  ],
+  "unsigned_transaction": "0a9c057472616e73616374696f6e287075626c69634b6579733a205b537472696e675d29207b0a2020202070726570617265287369676e65723a20417574684163636f756e7429207b0a2020202020202020666f72206b657920696e207075626c69634b657973207b0a2020202020202020202020202f2f2043726561746520616e206163636f756e7420616e642073657420746865206163636f756e74207075626c6963206b65792e0a2020202020202020202020206c65742061636374203d20417574684163636f756e742870617965723a207369676e6572290a2020202020202020202020206c6574207075626c69634b6579203d205075626c69634b6579280a202020202020202020202020202020207075626c69634b65793a206b65792e6465636f646548657828292c0a202020202020202020202020202020207369676e6174757265416c676f726974686d3a205369676e6174757265416c676f726974686d2e45434453415f736563703235366b310a202020202020202020202020290a202020202020202020202020696620217075626c69634b65792e697356616c6964207b0a2020202020202020202020202020202070616e69632822496e76616c6964207075626c69634b65792076616c756522290a2020202020202020202020207d0a202020202020202020202020616363742e6b6579732e616464280a202020202020202020202020202020207075626c69634b65793a207075626c69634b65792c0a2020202020202020202020202020202068617368416c676f726974686d3a2048617368416c676f726974686d2e534841335f3235362c0a202020202020202020202020202020207765696768743a20313030302e300a202020202020202020202020290a20202020202020207d0a202020207d0a7d0a12b8017b2274797065223a224172726179222c2276616c7565223a5b7b2274797065223a22537472696e67222c2276616c7565223a223935303238613134396665306339363166663964333632336663383365326563643166333530373163363732356637613466343935633965313366323364323338663331633834633032366139656532323034313736623737636366373762393939626331613932346339656332626435336266643264623663626536306333227d5d7d0a1a207451aecfd37612fa8fd1fc5e75abaa821977d75c7c6f9f37ef336036be105c29208f4e2a0c0a082a0a5a914734365d180232082a0a5a914734365d3a082a0a5a914734365d"
+}
+```
+
+Take the `payloads[0].hex_bytes` and sign it using the `payer`'s private key.
+Here's a helper script for signing payloads:
+
+```go
+package main
+
+import (
+	"encoding/hex"
+	"fmt"
+	"log"
+	"os"
+
+	"github.com/ethereum/go-ethereum/crypto/secp256k1"
+)
+
+func main() {
+	raw, err := hex.DecodeString(os.Args[1])
+	if err != nil {
+		log.Fatalf("Could not hex decode private key: %s", err)
+	}
+	payload, err := hex.DecodeString(os.Args[2])
+	if err != nil {
+		log.Fatalf("Could not hex decode payload: %s", err)
+	}
+	sig, err := secp256k1.Sign(payload, raw)
+	if err != nil {
+		log.Fatalf("Failed to sign payload: %s", err)
+	}
+	fmt.Printf("%x\n", sig[:64])
+}
+```
+
+It takes two parameters, first is the hex-encoded private key, and the second is
+the `payload.hex_bytes` value.
+
+Now make a call to `/construction/combine`:
+
+* Copy the `unsigned_transaction` from the `/construction/payloads` response
+
+* Copy `payloads[0]` from the `/construction/payloads` response, and set it as
+  `signatures[0].signing_payload`
+
+* Set the `payer`'s public key in `signatures[0].public_key.hex_bytes`. (Note:
+  to simplify testing we're just using the same public key everywhere for new
+  the public used in the `create_account` operation). accounts and the
+  originators, so in reality this value will be different from
+
+* Copy the hex-encoded signature output from the Go script and set it as
+  `signatures[0].hex_bytes`
+
+```json
+{
+  "network_identifier": {
+    "blockchain": "flow",
+    "network": "testnet"
+  },
+  "unsigned_transaction": "0a9c057472616e73616374696f6e287075626c69634b6579733a205b537472696e675d29207b0a2020202070726570617265287369676e65723a20417574684163636f756e7429207b0a2020202020202020666f72206b657920696e207075626c69634b657973207b0a2020202020202020202020202f2f2043726561746520616e206163636f756e7420616e642073657420746865206163636f756e74207075626c6963206b65792e0a2020202020202020202020206c65742061636374203d20417574684163636f756e742870617965723a207369676e6572290a2020202020202020202020206c6574207075626c69634b6579203d205075626c69634b6579280a202020202020202020202020202020207075626c69634b65793a206b65792e6465636f646548657828292c0a202020202020202020202020202020207369676e6174757265416c676f726974686d3a205369676e6174757265416c676f726974686d2e45434453415f736563703235366b310a202020202020202020202020290a202020202020202020202020696620217075626c69634b65792e697356616c6964207b0a2020202020202020202020202020202070616e69632822496e76616c6964207075626c69634b65792076616c756522290a2020202020202020202020207d0a202020202020202020202020616363742e6b6579732e616464280a202020202020202020202020202020207075626c69634b65793a207075626c69634b65792c0a2020202020202020202020202020202068617368416c676f726974686d3a2048617368416c676f726974686d2e534841335f3235362c0a202020202020202020202020202020207765696768743a20313030302e300a202020202020202020202020290a20202020202020207d0a202020207d0a7d0a12b8017b2274797065223a224172726179222c2276616c7565223a5b7b2274797065223a22537472696e67222c2276616c7565223a223935303238613134396665306339363166663964333632336663383365326563643166333530373163363732356637613466343935633965313366323364323338663331633834633032366139656532323034313736623737636366373762393939626331613932346339656332626435336266643264623663626536306333227d5d7d0a1a207451aecfd37612fa8fd1fc5e75abaa821977d75c7c6f9f37ef336036be105c29208f4e2a0c0a082a0a5a914734365d180232082a0a5a914734365d3a082a0a5a914734365d",
+  "signatures": [
+    {
+      "signing_payload": {
+        "account_identifier": {
+          "address": "0x2a0a5a914734365d"
+        },
+        "address": "0x2a0a5a914734365d",
+        "hex_bytes": "885ddb54d4029e2092d6bc047e69d8f396ab56b9a8b03ccc5a0329e6efbbce0e",
+        "signature_type": "ecdsa"
+      },
+      "public_key": {
+        "hex_bytes": "0395028a149fe0c961ff9d3623fc83e2ecd1f35071c6725f7a4f495c9e13f23d23",
+        "curve_type": "secp256k1"
+      },
+      "signature_type": "ecdsa",
+      "hex_bytes": "42be8f42caaed8dfa89d87ed78840944dd0a8e185dfc8eee19597a6d84e5d37416b75433f8a38b93223b2904c75a6a363a0e1a7422985ebb48a1641650d77d6d"
+    }
+  ]
+}
+```
+
+This will return a response like:
+
+```json
+{
+  "signed_transaction": "0a9c057472616e73616374696f6e287075626c69634b6579733a205b537472696e675d29207b0a2020202070726570617265287369676e65723a20417574684163636f756e7429207b0a2020202020202020666f72206b657920696e207075626c69634b657973207b0a2020202020202020202020202f2f2043726561746520616e206163636f756e7420616e642073657420746865206163636f756e74207075626c6963206b65792e0a2020202020202020202020206c65742061636374203d20417574684163636f756e742870617965723a207369676e6572290a2020202020202020202020206c6574207075626c69634b6579203d205075626c69634b6579280a202020202020202020202020202020207075626c69634b65793a206b65792e6465636f646548657828292c0a202020202020202020202020202020207369676e6174757265416c676f726974686d3a205369676e6174757265416c676f726974686d2e45434453415f736563703235366b310a202020202020202020202020290a202020202020202020202020696620217075626c69634b65792e697356616c6964207b0a2020202020202020202020202020202070616e69632822496e76616c6964207075626c69634b65792076616c756522290a2020202020202020202020207d0a202020202020202020202020616363742e6b6579732e616464280a202020202020202020202020202020207075626c69634b65793a207075626c69634b65792c0a2020202020202020202020202020202068617368416c676f726974686d3a2048617368416c676f726974686d2e534841335f3235362c0a202020202020202020202020202020207765696768743a20313030302e300a202020202020202020202020290a20202020202020207d0a202020207d0a7d0a12b8017b2274797065223a224172726179222c2276616c7565223a5b7b2274797065223a22537472696e67222c2276616c7565223a223935303238613134396665306339363166663964333632336663383365326563643166333530373163363732356637613466343935633965313366323364323338663331633834633032366139656532323034313736623737636366373762393939626331613932346339656332626435336266643264623663626536306333227d5d7d0a1a207451aecfd37612fa8fd1fc5e75abaa821977d75c7c6f9f37ef336036be105c29208f4e2a0c0a082a0a5a914734365d180232082a0a5a914734365d3a082a0a5a914734365d4a4c0a082a0a5a914734365d1a4042be8f42caaed8dfa89d87ed78840944dd0a8e185dfc8eee19597a6d84e5d37416b75433f8a38b93223b2904c75a6a363a0e1a7422985ebb48a1641650d77d6d"
+}
+```
+
+Optionally validate that the signed transaction matches the original intent by
+calling `/construction/parse`:
+
+```json
+{
+  "network_identifier": {
+    "blockchain": "flow",
+    "network": "testnet"
+  },
+  "signed": true,
+  "transaction": "0a9c057472616e73616374696f6e287075626c69634b6579733a205b537472696e675d29207b0a2020202070726570617265287369676e65723a20417574684163636f756e7429207b0a2020202020202020666f72206b657920696e207075626c69634b657973207b0a2020202020202020202020202f2f2043726561746520616e206163636f756e7420616e642073657420746865206163636f756e74207075626c6963206b65792e0a2020202020202020202020206c65742061636374203d20417574684163636f756e742870617965723a207369676e6572290a2020202020202020202020206c6574207075626c69634b6579203d205075626c69634b6579280a202020202020202020202020202020207075626c69634b65793a206b65792e6465636f646548657828292c0a202020202020202020202020202020207369676e6174757265416c676f726974686d3a205369676e6174757265416c676f726974686d2e45434453415f736563703235366b310a202020202020202020202020290a202020202020202020202020696620217075626c69634b65792e697356616c6964207b0a2020202020202020202020202020202070616e69632822496e76616c6964207075626c69634b65792076616c756522290a2020202020202020202020207d0a202020202020202020202020616363742e6b6579732e616464280a202020202020202020202020202020207075626c69634b65793a207075626c69634b65792c0a2020202020202020202020202020202068617368416c676f726974686d3a2048617368416c676f726974686d2e534841335f3235362c0a202020202020202020202020202020207765696768743a20313030302e300a202020202020202020202020290a20202020202020207d0a202020207d0a7d0a12b8017b2274797065223a224172726179222c2276616c7565223a5b7b2274797065223a22537472696e67222c2276616c7565223a223935303238613134396665306339363166663964333632336663383365326563643166333530373163363732356637613466343935633965313366323364323338663331633834633032366139656532323034313736623737636366373762393939626331613932346339656332626435336266643264623663626536306333227d5d7d0a1a207451aecfd37612fa8fd1fc5e75abaa821977d75c7c6f9f37ef336036be105c29208f4e2a0c0a082a0a5a914734365d180232082a0a5a914734365d3a082a0a5a914734365d4a4c0a082a0a5a914734365d1a4042be8f42caaed8dfa89d87ed78840944dd0a8e185dfc8eee19597a6d84e5d37416b75433f8a38b93223b2904c75a6a363a0e1a7422985ebb48a1641650d77d6d"
+}
+```
+
+This returns something like:
+
+```json
+{
+  "account_identifier_signers": [
+    {
+      "address": "0x2a0a5a914734365d"
+    }
+  ],
+  "operations": [
+    {
+      "metadata": {
+        "public_key": "0395028a149fe0c961ff9d3623fc83e2ecd1f35071c6725f7a4f495c9e13f23d23"
+      },
+      "operation_identifier": {
+        "index": 0
+      },
+      "type": "create_account"
+    }
+  ],
+  "signers": [
+    "0x2a0a5a914734365d"
+  ]
+}
+```
+
+As we can see, the `operations` match what we specified.
+
+We can now submit the transaction by calling `/construction/submit`:
+
+```json
+{
+  "network_identifier": {
+    "blockchain": "flow",
+    "network": "testnet"
+  },
+  "signed_transaction": "0a9c057472616e73616374696f6e287075626c69634b6579733a205b537472696e675d29207b0a2020202070726570617265287369676e65723a20417574684163636f756e7429207b0a2020202020202020666f72206b657920696e207075626c69634b657973207b0a2020202020202020202020202f2f2043726561746520616e206163636f756e7420616e642073657420746865206163636f756e74207075626c6963206b65792e0a2020202020202020202020206c65742061636374203d20417574684163636f756e742870617965723a207369676e6572290a2020202020202020202020206c6574207075626c69634b6579203d205075626c69634b6579280a202020202020202020202020202020207075626c69634b65793a206b65792e6465636f646548657828292c0a202020202020202020202020202020207369676e6174757265416c676f726974686d3a205369676e6174757265416c676f726974686d2e45434453415f736563703235366b310a202020202020202020202020290a202020202020202020202020696620217075626c69634b65792e697356616c6964207b0a2020202020202020202020202020202070616e69632822496e76616c6964207075626c69634b65792076616c756522290a2020202020202020202020207d0a202020202020202020202020616363742e6b6579732e616464280a202020202020202020202020202020207075626c69634b65793a207075626c69634b65792c0a2020202020202020202020202020202068617368416c676f726974686d3a2048617368416c676f726974686d2e534841335f3235362c0a202020202020202020202020202020207765696768743a20313030302e300a202020202020202020202020290a20202020202020207d0a202020207d0a7d0a12b8017b2274797065223a224172726179222c2276616c7565223a5b7b2274797065223a22537472696e67222c2276616c7565223a223935303238613134396665306339363166663964333632336663383365326563643166333530373163363732356637613466343935633965313366323364323338663331633834633032366139656532323034313736623737636366373762393939626331613932346339656332626435336266643264623663626536306333227d5d7d0a1a207451aecfd37612fa8fd1fc5e75abaa821977d75c7c6f9f37ef336036be105c29208f4e2a0c0a082a0a5a914734365d180232082a0a5a914734365d3a082a0a5a914734365d4a4c0a082a0a5a914734365d1a4042be8f42caaed8dfa89d87ed78840944dd0a8e185dfc8eee19597a6d84e5d37416b75433f8a38b93223b2904c75a6a363a0e1a7422985ebb48a1641650d77d6d"
+}
+```
+
+This will return something like:
+
+```json
+{
+  "transaction_identifier": {
+    "hash": "9a6d04661eb0680f318081c8e159eaa35f874936c1933dc997c53295d7879c05"
+  }
+}
+```
+
+You can then look up the transaction on the explorer, e.g.
+
+* https://testnet.flowscan.org/transaction/9a6d04661eb0680f318081c8e159eaa35f874936c1933dc997c53295d7879c05/script
+
+And then look up the corresponding indexed operations by calling `/block`:
+
+```json
+{
+  "network_identifier": {
+    "blockchain": "flow",
+    "network": "testnet"
+  },
+  "block_identifier": {
+    "index": 57814897
+  }
+}
+```
+
+Which tells us the new account address:
+
+```json
+{
+  "block": {
+    "block_identifier": {
+      "hash": "ddcb2ebf31773b56de7557e8d6358e5f096ee459cffa77f7ace044af2ee0353e",
+      "index": 57814897
+    },
+    "parent_block_identifier": {
+      "hash": "61d0c96fc99236b079272547d0be86d7957d42742ecdfb78a0ca2d8ae133964c",
+      "index": 57814896
+    },
+    "timestamp": 1642788833830,
+    "transactions": [
+      {
+        "operations": [],
+        "transaction_identifier": {
+          "hash": "3094f76e94303030e5da36f5a323475ce82593a78196541cc06f6df206684775"
+        }
+      },
+      {
+        "operations": [
+          {
+            "operation_identifier": {
+              "index": 0
+            },
+            "type": "create_account",
+            "status": "SUCCESS",
+            "account": {
+              "address": "0x9b2be71247c976c7"
+            }
+          },
+          {
+            "operation_identifier": {
+              "index": 1
+            },
+            "type": "transfer",
+            "status": "SUCCESS",
+            "account": {
+              "address": "0x9b2be71247c976c7"
+            },
+            "amount": {
+              "value": "100000",
+              "currency": {
+                "symbol": "FLOW",
+                "decimals": 8
+              }
+            },
+            "metadata": {
+              "events": "W3siYWNjb3VudCI6IjB4OWIyYmU3MTI0N2M5NzZjNyIsImFtb3VudCI6IjEwMDAwMCIsInR5cGUiOiJERVBPU0lUIn0seyJhY2NvdW50IjoiMHgyYTBhNWE5MTQ3MzQzNjVkIiwiYW1vdW50IjoiMTAwMDAwIiwidHlwZSI6IldJVEhEUkFXQUwifSx7ImFjY291bnQiOiIweDJhMGE1YTkxNDczNDM2NWQiLCJhbW91bnQiOiIxMDAwIiwidHlwZSI6IldJVEhEUkFXQUwifV0="
+            }
+          }
+        ],
+        "transaction_identifier": {
+          "hash": "9a6d04661eb0680f318081c8e159eaa35f874936c1933dc997c53295d7879c05"
+        }
+      },
+      {
+        "operations": [],
+        "transaction_identifier": {
+          "hash": "ff86594edabe189959161eb6589da927639de6af5e435fe5258cbad5c2f37b29"
+        }
+      }
+    ]
+  }
+}
+```
+
+Tada!
+
+[Access API]: https://docs.onflow.org/access-api/
+[Flow blockchain]: https://www.onflow.org/
+[Rosetta API]: https://www.rosetta-api.org/
+[flow-go]: https://github.com/onflow/flow-go
+[relic build]: https://github.com/onflow/flow-go/tree/master/crypto#package-import
+[sporks.json]: https://github.com/onflow/flow/blob/master/sporks.json

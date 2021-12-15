@@ -1,0 +1,96 @@
+syntax = "proto3";
+package model;
+
+option go_package = "github.com/onflow/rosetta/model";
+
+// Network specifies the Flow network.
+enum Network {
+    UNSPECIFIED_NETWORK = 0;
+    MAINNET = 1;
+    TESTNET = 2;
+    CANARY = 3;
+}
+
+// OperationType specifies the type of an operation within an indexed
+// transaction.
+enum OperationType {
+    OPERATION_TYPE_UNSPECIFIED = 0;
+    CREATE_ACCOUNT = 1;
+    FEE = 2;
+    PROXY_TRANSFER = 3;
+    TRANSFER = 4;
+}
+
+// TransferType specifies the type of a TransferEvent.
+enum TransferType {
+    TRANSFER_TYPE_UNSPECIFIED = 0;
+    DEPOSIT = 1;
+    WITHDRAWAL = 2;
+}
+
+// BlockMeta represents the key block metadata for use in /network/status within
+// the Rosetta API.
+message BlockMeta {
+    bytes hash = 1;
+    uint64 height = 2;
+    bytes parent = 3;
+    uint64 timestamp = 4;
+}
+
+// ConstructOpts defines the options for Rosetta construction calls.
+message ConstructOpts {
+    bytes block_hash = 1;
+    bool block_hash_from_remote = 6;
+    string block_hash_remote_server = 7;
+    uint64 execution_effort = 9;
+    uint64 fees = 8;
+    uint64 inclusion_effort = 10;
+    bool inner = 2;
+    uint64 new_accounts = 11;
+    bytes payer = 3;
+    string proxy_transfer_payload = 4; // hex-encoded
+    int64 sequence_number = 5;
+}
+
+// IndexedBlock represents a sealed block at a specific height.
+message IndexedBlock {
+    uint64 timestamp = 1;
+    repeated IndexedTransaction transactions = 2;
+}
+
+// IndexedTransaction represents a transaction within a sealed block.
+message IndexedTransaction {
+    string error_message = 5;
+    repeated TransferEvent events = 4;
+    bool failed = 1;
+    bytes hash = 2;
+    repeated Operation operations = 3;
+}
+
+// Operation represents an individual operation within a transaction.
+//
+// * CREATE_ACCOUNT type operations have account specified, and if it happens to
+//   be an account created with a Proxy.Vault, then the proxy_public_key will
+//   also be specified.
+//
+// * FEE type operations have sender account, amount, and receiver specified.
+//
+// * PROXY_TRANSFER and TRANSFER type operations have sender account, amount,
+//   and receiver specified. They might also include transfer_events if there
+//   are non-originator accounts involved in the transfer.
+message Operation {
+    bytes account = 1;
+    uint64 amount = 2;
+    bytes proxy_public_key = 3;
+    bytes receiver = 4;
+    repeated TransferEvent transfer_events = 5 [deprecated = true];
+    OperationType type = 6;
+}
+
+// TransferEvent signifies an event corresponding to a transfer that doesn't
+// involve an originator-based account.
+message TransferEvent {
+    bytes account = 1;
+    uint64 amount = 2;
+    TransferType type = 3;
+}

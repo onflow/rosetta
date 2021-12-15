@@ -1,0 +1,11 @@
+{
+  "contracts": {
+    "flow_cold_storage_proxy": "0000000000000000",
+    "flow_fees": "912d5440f7e3769e",
+    "flow_token": "7e60df042a9c0868",
+    "fungible_token": "9a0766d93b6608b7"
+  },
+  "network": "testnet",
+  "mode": "offline",
+  "port": 8080
+}
