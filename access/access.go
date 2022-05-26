@@ -12,9 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onflow/rosetta/cache"
-	"github.com/onflow/rosetta/log"
-	"github.com/onflow/rosetta/trace"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	libp2ptls "github.com/libp2p/go-libp2p-tls"
 	"github.com/onflow/cadence"
@@ -23,6 +20,9 @@ import (
 	"github.com/onflow/flow-go/network/p2p/keyutils"
 	"github.com/onflow/flow/protobuf/go/flow/access"
 	"github.com/onflow/flow/protobuf/go/flow/entities"
+	"github.com/onflow/rosetta/cache"
+	"github.com/onflow/rosetta/log"
+	"github.com/onflow/rosetta/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -36,6 +36,14 @@ const (
 	maxMessageSize = 100 << 20 // 100MiB
 	metricsNS      = "access_api"
 	submitTimeout  = 5 * time.Minute
+)
+
+// NOTE(tav): This text needs to be kept in sync with the text returned by the
+// unaryServerInterceptor for the rate limiter within the Access API server:
+//
+// https://github.com/onflow/flow-go/blob/master/engine/access/rpc/rate_limit_interceptor.go
+const (
+	rateLimitText = "rate limit reached"
 )
 
 var (
@@ -430,10 +438,13 @@ func (c Client) newSpan(ctx context.Context, name string) (context.Context, trac
 // NodeConfig defines the metadata needed to securely connect to an Access API
 // server.
 type NodeConfig struct {
-	// Address specifies the host:port for the secure gRPC endpoint.
-	Address   string `json:"address"`
+	// Address specifies the host:port for the gRPC endpoint.
+	Address string `json:"address"`
+	// PublicKey indicates that it should use TLS using libp2p certs derived
+	// from the given public key.
 	PublicKey string `json:"public_key"`
-	TLS       bool
+	// TLS indicates that it should use TLS using the system root CAs.
+	TLS bool `json:"tls"`
 }
 
 // Pool represents a pool of Flow Access API clients.
@@ -445,21 +456,15 @@ func (p Pool) Client() Client {
 	return p[rand.Int()%len(p)]
 }
 
+// InterceptRateLimitUnary handles any rate limit headers set by Access API
+// proxy servers.
 func InterceptRateLimitUnary(ctx context.Context, method string, req, res interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-	md := make(metadata.MD)
-	t := grpc.Trailer(&md)
-
-	opts = append(opts, t)
-
+	md := metadata.MD{}
+	opts = append(opts, grpc.Trailer(&md))
 	err := invoker(ctx, method, req, res, cc, opts...)
-
-	log.Debugf("grpc response headers: %s --- %+v --- %+v", method, md, ctx)
-
 	val, ok := md["x-ratelimit-remaining"]
-
 	if ok && len(val) > 0 {
 		limit, err := strconv.Atoi(val[0])
-
 		if err == nil && limit <= 0 {
 			log.Warnf("Rate limit exceeded for %s", method)
 			attrs := []trace.KeyValue{
@@ -467,10 +472,9 @@ func InterceptRateLimitUnary(ctx context.Context, method string, req, res interf
 				trace.String("server", cc.Target()),
 			}
 			rateLimitReached.Add(ctx, 1, attrs...)
-			return status.Errorf(codes.ResourceExhausted, "rate limit exceeded")
+			return status.Errorf(codes.ResourceExhausted, rateLimitText)
 		}
 	}
-
 	return err
 }
 
@@ -483,7 +487,7 @@ func InterceptRateLimitUnary(ctx context.Context, method string, req, res interf
 func IsRateLimited(err error) bool {
 	code := status.Code(err)
 	msg := err.Error()
-	return code == codes.ResourceExhausted && strings.Contains(msg, "rate limit exceeded")
+	return code == codes.ResourceExhausted && strings.Contains(msg, rateLimitText)
 }
 
 // New returns a Flow Access API client pool that will return random clients

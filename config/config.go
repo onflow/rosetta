@@ -12,10 +12,10 @@ import (
 	"sort"
 	"strconv"
 
+	"github.com/onflow/flow-go/model/flow"
 	"github.com/onflow/rosetta/access"
 	"github.com/onflow/rosetta/cache"
 	"github.com/onflow/rosetta/log"
-	"github.com/onflow/flow-go/model/flow"
 )
 
 // Chain represents the definition of a Flow chain like mainnet and testnet.
@@ -153,6 +153,7 @@ type sporkConfig struct {
 	RootBlock   uint64              `json:"root_block"`
 	Version     int                 `json:"version"`
 }
+
 type chainConfig struct {
 	filename                 string
 	Cache                    bool                  `json:"cache"`
@@ -417,12 +418,14 @@ func (c *chainConfig) parseAndValidateDisableConsensusFollower(result *Chain) {
 				c.Network, latest.ID,
 			)
 		}
+		//lint:ignore SA5011 We exit above in the log.Fatalf call if cfg is nil.
 		if cfg.RootProtocolStateURL == "" {
 			log.Fatalf(
 				"Missing .consensus.root_protocol_state_url definition for %s-%d",
 				c.Network, latest.ID,
 			)
 		}
+		//lint:ignore SA5011 We exit above in the log.Fatalf call if cfg is nil.
 		if cfg.RootProtocolStateSignatureURL == "" && !cfg.DisableSignatureCheck {
 			log.Fatalf(
 				"Missing .consensus.root_protocol_state_signature_url definition for %s-%d",

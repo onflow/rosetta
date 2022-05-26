@@ -14,8 +14,8 @@ import (
 //
 // Adapted from:
 // https://github.com/onflow/flow-core-contracts/blob/master/transactions/flowToken/transfer_tokens.cdc
-const BasicTransfer = `import FungibleToken from 0x{{.Contracts.FungibleToken}}
-import FlowToken from 0x{{.Contracts.FlowToken}}
+const BasicTransfer = `import FlowToken from 0x{{.Contracts.FlowToken}}
+import FungibleToken from 0x{{.Contracts.FungibleToken}}
 
 transaction(receiver: Address, amount: UFix64) {
 
@@ -74,7 +74,7 @@ const CreateAccount = `transaction(publicKeys: [String]) {
 `
 
 // CreateProxyAccount defines the template for creating a new Flow account with
-// a Proxy Vault.
+// a FlowColdStorageProxy Vault.
 const CreateProxyAccount = `import FlowColdStorageProxy from 0x{{.Contracts.FlowColdStorageProxy}}
 
 transaction(publicKey: String) {
@@ -85,21 +85,11 @@ transaction(publicKey: String) {
 }
 `
 
-// DeployContract defines the template for creating a new Flow account with the
-// given public key and deploying the given contract on it.
-const DeployContract = `transaction(publicKey: String, contractName: String, contractCode: String) {
+// DeployContract defines the template for deploying the given contract on an
+// account.
+const DeployContract = `transaction(contractName: String, contractCode: String) {
     prepare(payer: AuthAccount) {
-        let acct = AuthAccount(payer: payer)
-        let key = PublicKey(
-            publicKey: publicKey.decodeHex(),
-            signatureAlgorithm: SignatureAlgorithm.ECDSA_secp256k1
-        )
-        acct.keys.add(
-            publicKey: key,
-            hashAlgorithm: HashAlgorithm.SHA3_256,
-            weight: 1000.0
-        )
-        acct.contracts.add(
+        payer.contracts.add(
             name: contractName,
             code: contractCode.decodeHex()
         )
@@ -108,20 +98,30 @@ const DeployContract = `transaction(publicKey: String, contractName: String, con
 `
 
 // GetBalances defines the template for the read-only transaction script that
-// returns an account's proxy balance if it is a proxy account.
+// returns an account's balances.
+//
+// The returned balances include the value of the account's default FLOW vault,
+// as well as the optional FlowColdStorageProxy vault.
 const GetBalances = `import FlowColdStorageProxy from 0x{{.Contracts.FlowColdStorageProxy}}
+import FlowToken from 0x{{.Contracts.FlowToken}}
+import FungibleToken from 0x{{.Contracts.FungibleToken}}
 
 pub struct AccountBalances {
+    pub let default_balance: UFix64
     pub let is_proxy: Bool
     pub let proxy_balance: UFix64
 
-    init(is_proxy: Bool, proxy_balance: UFix64) {
+    init(default_balance: UFix64, is_proxy: Bool, proxy_balance: UFix64) {
+        self.default_balance = default_balance
         self.is_proxy = is_proxy
         self.proxy_balance = proxy_balance
     }
 }
 
 pub fun main(addr: Address): AccountBalances {
+    let acct = getAccount(addr)
+    let balanceRef = acct.getCapability(/public/flowTokenBalance)
+                         .borrow<&FlowToken.Vault{FungibleToken.Balance}>()!
     var is_proxy = false
     var proxy_balance = 0.0
     let ref = acct.getCapability(FlowColdStorageProxy.VaultCapabilityPublicPath).borrow<&FlowColdStorageProxy.Vault>()
@@ -130,8 +130,38 @@ pub fun main(addr: Address): AccountBalances {
         proxy_balance = vault.getBalance()
     }
     return AccountBalances(
+        default_balance: balanceRef.balance,
         is_proxy: is_proxy,
         proxy_balance: proxy_balance
+    )
+}
+`
+
+// GetBalancesBasic defines the template for the read-only transaction script
+// that returns the balance of an account's default FLOW vault.
+const GetBalancesBasic = `import FlowToken from 0x{{.Contracts.FlowToken}}
+import FungibleToken from 0x{{.Contracts.FungibleToken}}
+
+pub struct AccountBalances {
+    pub let default_balance: UFix64
+    pub let is_proxy: Bool
+    pub let proxy_balance: UFix64
+
+    init(default_balance: UFix64, is_proxy: Bool, proxy_balance: UFix64) {
+        self.default_balance = default_balance
+        self.is_proxy = is_proxy
+        self.proxy_balance = proxy_balance
+    }
+}
+
+pub fun main(addr: Address): AccountBalances {
+    let acct = getAccount(addr)
+    let balanceRef = acct.getCapability(/public/flowTokenBalance)
+                         .borrow<&FlowToken.Vault{FungibleToken.Balance}>()!
+    return AccountBalances(
+        default_balance: balanceRef.balance,
+        is_proxy: false,
+        proxy_balance: 0.0
     )
 }
 `
@@ -189,7 +219,7 @@ transaction(sender: Address, receiver: Address, amount: UFix64, nonce: Int64, si
 }
 `
 
-// UpdateContract updates the existing contract.
+// UpdateContract updates an existing contract.
 const UpdateContract = `transaction(contractName: String, contractCode: String) {
     prepare(payer: AuthAccount) {
         payer.contracts.update__experimental(

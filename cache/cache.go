@@ -4,11 +4,11 @@ package cache
 import (
 	"context"
 
+	"github.com/dgraph-io/badger/v3"
+	"github.com/golang/protobuf/proto"
 	"github.com/onflow/rosetta/log"
 	"github.com/onflow/rosetta/process"
 	"github.com/onflow/rosetta/trace"
-	"github.com/dgraph-io/badger/v3"
-	"github.com/golang/protobuf/proto"
 	"google.golang.org/grpc"
 	"lukechampine.com/blake3"
 )
@@ -49,7 +49,8 @@ func (s *Store) DropAll() error {
 	return s.db.DropAll()
 }
 
-// Intercepts all unary (non-stream) gRPC calls.
+// InterceptUnary implements the gRPC middleware for caching certain Access API
+// calls.
 func (s *Store) InterceptUnary(ctx context.Context, method string, req, res interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 	if nonIdempotent[method] {
 		return invoker(ctx, method, req, res, cc, opts...)

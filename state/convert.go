@@ -7,8 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onflow/rosetta/config"
-	"github.com/onflow/rosetta/log"
 	jsoncdc "github.com/onflow/cadence/encoding/json"
 	_ "github.com/onflow/cadence/runtime/stdlib" // imported for side-effects only
 	"github.com/onflow/flow-go/crypto"
@@ -17,6 +15,8 @@ import (
 	"github.com/onflow/flow-go/model/flow"
 	"github.com/onflow/flow-go/storage/merkle"
 	"github.com/onflow/flow/protobuf/go/flow/entities"
+	"github.com/onflow/rosetta/config"
+	"github.com/onflow/rosetta/log"
 )
 
 func convertExecutionResult(hash []byte, height uint64, result *entities.ExecutionResult) (flowExecutionResult, bool) {

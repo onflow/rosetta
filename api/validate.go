@@ -27,6 +27,8 @@ func (s *Server) validateBalances(ctx context.Context) {
 			time.Sleep(time.Second)
 			continue
 		}
+		done := 0
+		failed := 0
 		wait := time.Duration(0)
 		for acct, isProxy := range accts {
 			// NOTE(tav): We skip validation of proxy accounts if the current
@@ -70,7 +72,7 @@ func (s *Server) validateBalances(ctx context.Context) {
 					)
 					continue
 				}
-				onchain, xerr := s.getOnchainData(ctx, acct[:], latest.Hash, latest.Height)
+				onchain, xerr := s.getOnchainData(ctx, acct[:], latest.Hash)
 				if xerr != nil {
 					log.Errorf(
 						"Failed to get on-chain balances for %x at block %x (%d): %s",
@@ -83,6 +85,7 @@ func (s *Server) validateBalances(ctx context.Context) {
 						"Mismatching proxy account status for account %x at block %x (%d): indexed %v, got on-chain %v",
 						acct[:], latest.Hash, latest.Height, isProxy, onchain.IsProxy,
 					)
+					failed++
 				}
 				if onchain.IsProxy {
 					if indexed.Balance != onchain.ProxyBalance {
@@ -90,19 +93,45 @@ func (s *Server) validateBalances(ctx context.Context) {
 							"Mismatching proxy balance found for account %x at block %x (%d): indexed %d, got on-chain %d",
 							acct[:], latest.Hash, latest.Height, indexed.Balance, onchain.ProxyBalance,
 						)
+						failed++
 					}
 				} else if indexed.Balance != onchain.DefaultBalance {
 					s.setIndexedStateErr(
 						"Mismatching balance found for account %x at block %x (%d): indexed %d, got on-chain %d",
 						acct[:], latest.Hash, latest.Height, indexed.Balance, onchain.DefaultBalance,
 					)
+					failed++
 				}
 				break
+			}
+			done++
+			if done%1000 == 0 {
+				if failed > 0 {
+					log.Errorf(
+						"Checked account balances for %d of %d accounts (%d failed)",
+						done, len(accts), failed,
+					)
+				} else {
+					log.Infof(
+						"Checked account balances for %d of %d accounts",
+						done, len(accts),
+					)
+				}
 			}
 			time.Sleep(time.Second)
 		}
 		if len(accts) > 0 {
-			log.Infof("Successfully validated all account balances: %d accounts", len(accts))
+			if failed > 0 {
+				log.Errorf(
+					"Checked all account balances: %d accounts (%d failed)",
+					len(accts), failed,
+				)
+			} else {
+				log.Infof(
+					"Checked all account balances: %d accounts",
+					len(accts),
+				)
+			}
 		}
 		time.Sleep(time.Minute)
 	}

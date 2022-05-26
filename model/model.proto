@@ -25,6 +25,9 @@ enum OperationType {
 enum TransferType {
     TRANSFER_TYPE_UNSPECIFIED = 0;
     DEPOSIT = 1;
+    FEE_DEPOSIT = 3;
+    PROXY_DEPOSIT = 4;
+    PROXY_WITHDRAWAL = 5;
     WITHDRAWAL = 2;
 }
 
@@ -87,10 +90,12 @@ message Operation {
     OperationType type = 6;
 }
 
-// TransferEvent signifies an event corresponding to a transfer that doesn't
-// involve an originator-based account.
+// TransferEvent represents an event corresponding to a transfer of FLOW within
+// a transaction.
 message TransferEvent {
-    bytes account = 1;
+    bytes account = 1 [deprecated = true];
     uint64 amount = 2;
+    bytes receiver = 4;
+    bytes sender = 5;
     TransferType type = 3;
 }

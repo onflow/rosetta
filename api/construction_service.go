@@ -9,18 +9,18 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/onflow/rosetta/access"
-	"github.com/onflow/rosetta/crypto"
-	"github.com/onflow/rosetta/fees"
-	"github.com/onflow/rosetta/log"
-	"github.com/onflow/rosetta/model"
-	"github.com/onflow/rosetta/trace"
 	"github.com/coinbase/rosetta-sdk-go/parser"
 	"github.com/coinbase/rosetta-sdk-go/types"
 	legacyProto "github.com/golang/protobuf/proto"
 	"github.com/onflow/cadence"
 	jsoncdc "github.com/onflow/cadence/encoding/json"
 	"github.com/onflow/flow/protobuf/go/flow/entities"
+	"github.com/onflow/rosetta/access"
+	"github.com/onflow/rosetta/crypto"
+	"github.com/onflow/rosetta/fees"
+	"github.com/onflow/rosetta/log"
+	"github.com/onflow/rosetta/model"
+	"github.com/onflow/rosetta/trace"
 	"golang.org/x/crypto/sha3"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -114,21 +114,33 @@ func (s *Server) ConstructionMetadata(ctx context.Context, r *types.Construction
 		return nil, xerr
 	}
 	height := uint64(0)
+	client := s.ConstructionAccessNodes.Client()
+	hdr, err := client.LatestBlockHeader(ctx)
+	if err != nil {
+		return nil, wrapErr(errInternal, err)
+	}
 	if opts.Inner {
 		if opts.SequenceNumber == -1 {
-			// TODO(tav): Perhaps look up the Proxy Vault's nonce value from the
-			// chain to make testing easier.
-			return nil, wrapErrorf(
-				errInvalidConstructOptions,
-				"sequence_number not specified in previous call to /construction/preprocess",
+			resp, err := client.Execute(
+				ctx, hdr.Id, s.scriptGetProxyNonce,
+				[]cadence.Value{cadence.BytesToAddress(opts.Payer)},
 			)
+			if err != nil {
+				return nil, wrapErrorf(
+					errFailedAccessAPICall,
+					"failed to execute get_proxy_nonce: %s", err,
+				)
+			}
+			nonce, ok := resp.ToGoValue().(int64)
+			if !ok {
+				return nil, wrapErrorf(
+					errInternal,
+					"failed to convert get_proxy_nonce result to int64",
+				)
+			}
+			opts.SequenceNumber = nonce
 		}
 	} else {
-		client := s.ConstructionAccessNodes.Client()
-		hdr, err := client.LatestBlockHeader(ctx)
-		if err != nil {
-			return nil, wrapErr(errInternal, err)
-		}
 		latest := s.Index.Latest()
 		if hdr.Height > latest.Height {
 			height = hdr.Height
@@ -205,14 +217,20 @@ func (s *Server) ConstructionParse(ctx context.Context, r *types.ConstructionPar
 		if bytes.Equal(txn.Script, s.scriptBasicTransfer) {
 			return decodeTransferOps(txn, false, r.Signed)
 		}
+		if bytes.Equal(txn.Script, s.scriptProxyTransfer) {
+			return decodeTransferOps(txn, true, r.Signed)
+		}
 		if bytes.Equal(txn.Script, s.scriptCreateAccount) {
 			return decodeCreateAccountOps(txn, false, r.Signed)
 		}
 		if bytes.Equal(txn.Script, s.scriptCreateProxyAccount) {
 			return decodeCreateAccountOps(txn, true, r.Signed)
 		}
-		if bytes.Equal(txn.Script, s.scriptProxyTransfer) {
-			return decodeTransferOps(txn, true, r.Signed)
+		if bytes.Equal(txn.Script, s.scriptDeployContract) {
+			return decodeContractOps(txn, false, r.Signed)
+		}
+		if bytes.Equal(txn.Script, s.scriptUpdateContract) {
+			return decodeContractOps(txn, true, r.Signed)
 		}
 		return nil, errInvalidTransactionPayload
 	}
@@ -271,7 +289,7 @@ func (s *Server) ConstructionPayloads(ctx context.Context, r *types.Construction
 	if opts.SequenceNumber < 0 {
 		return nil, wrapErrorf(
 			errInvalidConstructOptions,
-			"sequence_number from construct options is negative: %d",
+			"invalid sequence_number from construct options: %d",
 			opts.SequenceNumber,
 		)
 	}
@@ -298,7 +316,8 @@ func (s *Server) ConstructionPayloads(ctx context.Context, r *types.Construction
 		}, nil
 	}
 	if len(intent.keys) > 0 {
-		if intent.proxy || len(intent.contractName) > 0 {
+		if intent.proxy {
+			script = s.scriptCreateProxyAccount
 			arg, err := jsoncdc.Encode(cadence.String(intent.keys[0]))
 			if err != nil {
 				return nil, wrapErrorf(
@@ -306,25 +325,6 @@ func (s *Server) ConstructionPayloads(ctx context.Context, r *types.Construction
 				)
 			}
 			args = append(args, arg)
-			if intent.proxy {
-				script = s.scriptCreateProxyAccount
-			} else {
-				script = s.scriptDeployContract
-				arg, err := jsoncdc.Encode(cadence.String(intent.contractName))
-				if err != nil {
-					return nil, wrapErrorf(
-						errInvalidOpsIntent, "unable to JSON encode contract name: %s", err,
-					)
-				}
-				args = append(args, arg)
-				arg, err = jsoncdc.Encode(cadence.String(intent.contractCode))
-				if err != nil {
-					return nil, wrapErrorf(
-						errInvalidOpsIntent, "unable to JSON encode contract code: %s", err,
-					)
-				}
-				args = append(args, arg)
-			}
 		} else {
 			script = s.scriptCreateAccount
 			ckeys := make([]cadence.Value, len(intent.keys))
@@ -340,6 +340,26 @@ func (s *Server) ConstructionPayloads(ctx context.Context, r *types.Construction
 			}
 			args = append(args, arg)
 		}
+	} else if intent.contractCode != "" {
+		if intent.contractUpdate {
+			script = s.scriptUpdateContract
+		} else {
+			script = s.scriptDeployContract
+		}
+		arg, err := jsoncdc.Encode(cadence.String(intent.contractName))
+		if err != nil {
+			return nil, wrapErrorf(
+				errInvalidOpsIntent, "unable to JSON encode contract name: %s", err,
+			)
+		}
+		args = append(args, arg)
+		arg, err = jsoncdc.Encode(cadence.String(intent.contractCode))
+		if err != nil {
+			return nil, wrapErrorf(
+				errInvalidOpsIntent, "unable to JSON encode contract code: %s", err,
+			)
+		}
+		args = append(args, arg)
 	} else {
 		if intent.proxy {
 			script = s.scriptProxyTransfer
@@ -435,6 +455,15 @@ func (s *Server) ConstructionPreprocess(ctx context.Context, r *types.Constructi
 	if xerr != nil {
 		return nil, xerr
 	}
+	// NOTE(tav): We explicitly error on transfers to the fee address so as to
+	// simplify our event processing logic.
+	if bytes.Equal(intent.receiver, s.feeAddr) {
+		return nil, wrapErrorf(
+			errInvalidOpsIntent,
+			"cannot make transfers to the fee address: 0x%s",
+			s.Chain.Contracts.FlowFees,
+		)
+	}
 	opts := &model.ConstructOpts{
 		InclusionEffort: fees.InclusionEffort,
 		Inner:           intent.inner,
@@ -500,28 +529,34 @@ func (s *Server) ConstructionPreprocess(ctx context.Context, r *types.Constructi
 		}
 		opts.SequenceNumber = seq
 	}
-	val, ok := r.Metadata["payer"]
-	if !ok {
-		return nil, wrapErrorf(
-			errInvalidMetadataField,
-			"payer metadata field is missing",
-		)
+	// NOTE(tav): We override the metadata.payer with the sender account
+	// address, if it is a proxy_transfer_inner operation.
+	if opts.Inner {
+		opts.Payer = intent.sender
+	} else {
+		val, ok := r.Metadata["payer"]
+		if !ok {
+			return nil, wrapErrorf(
+				errInvalidMetadataField,
+				"payer metadata field is missing",
+			)
+		}
+		raw, ok := val.(string)
+		if !ok {
+			return nil, wrapErrorf(
+				errInvalidMetadataField,
+				"payer metadata field is not a string: %v", val,
+			)
+		}
+		payer, xerr := s.getAccount(raw)
+		if xerr != nil {
+			return nil, wrapErrorf(
+				errInvalidMetadataField,
+				"invalid payer value: %s", formatErr(xerr),
+			)
+		}
+		opts.Payer = payer
 	}
-	raw, ok := val.(string)
-	if !ok {
-		return nil, wrapErrorf(
-			errInvalidMetadataField,
-			"payer metadata field is not a string: %v", val,
-		)
-	}
-	payer, xerr := s.getAccount(raw)
-	if xerr != nil {
-		return nil, wrapErrorf(
-			errInvalidMetadataField,
-			"invalid payer value: %s", formatErr(xerr),
-		)
-	}
-	opts.Payer = payer
 	data, err := proto.Marshal(opts)
 	if err != nil {
 		return nil, wrapErr(errProtobuf, err)
@@ -727,7 +762,7 @@ func (s *Server) parseIntent(ops []*types.Operation) (*txnIntent, *types.Error) 
 	}
 	intent := &txnIntent{}
 	switch typ {
-	case opCreateAccount, opCreateProxyAccount, opDeployContract:
+	case opCreateAccount, opCreateProxyAccount:
 		for _, op := range ops {
 			val, ok := op.Metadata["public_key"]
 			if !ok {
@@ -757,7 +792,7 @@ func (s *Server) parseIntent(ops []*types.Operation) (*txnIntent, *types.Error) 
 			}
 			intent.keys = append(intent.keys, hex.EncodeToString(pub))
 		}
-		if typ == opCreateProxyAccount || typ == opDeployContract {
+		if typ == opCreateProxyAccount {
 			if len(ops) > 1 {
 				return nil, wrapErrorf(
 					errInvalidOpsIntent,
@@ -765,53 +800,69 @@ func (s *Server) parseIntent(ops []*types.Operation) (*txnIntent, *types.Error) 
 					len(ops), typ,
 				)
 			}
-			if typ == opCreateProxyAccount {
-				intent.proxy = true
-			} else {
-				op := ops[0]
-				val, ok := op.Metadata["contract_name"]
-				if !ok {
-					return nil, wrapErrorf(
-						errInvalidOpsIntent, "contract_name metadata field missing on operation",
-					)
-				}
-				name, ok := val.(string)
-				if !ok {
-					return nil, wrapErrorf(
-						errInvalidOpsIntent,
-						"contract_name metadata field on operation is not a string: %v",
-						val,
-					)
-				}
-				if len(name) == 0 {
-					return nil, wrapErrorf(
-						errInvalidOpsIntent,
-						"contract_name metadata field on operation is empty",
-					)
-				}
-				val, ok = op.Metadata["contract_code"]
-				if !ok {
-					return nil, wrapErrorf(
-						errInvalidOpsIntent, "contract_code metadata field missing on operation",
-					)
-				}
-				code, ok := val.(string)
-				if !ok {
-					return nil, wrapErrorf(
-						errInvalidOpsIntent,
-						"contract_code metadata field on operation is not a string: %v",
-						val,
-					)
-				}
-				if len(code) == 0 {
-					return nil, wrapErrorf(
-						errInvalidOpsIntent,
-						"contract_code metadata field on operation is empty",
-					)
-				}
-				intent.contractCode = hex.EncodeToString([]byte(code))
-				intent.contractName = name
-			}
+			intent.proxy = true
+		}
+	case opDeployContract, opUpdateContract:
+		if len(ops) > 1 {
+			return nil, wrapErrorf(
+				errInvalidOpsIntent,
+				"multiple (%d) %s operations found",
+				len(ops), typ,
+			)
+		}
+		op := ops[0]
+		val, ok := op.Metadata["contract_name"]
+		if !ok {
+			return nil, wrapErrorf(
+				errInvalidOpsIntent, "contract_name metadata field missing on operation",
+			)
+		}
+		name, ok := val.(string)
+		if !ok {
+			return nil, wrapErrorf(
+				errInvalidOpsIntent,
+				"contract_name metadata field on operation is not a string: %v",
+				val,
+			)
+		}
+		if len(name) == 0 {
+			return nil, wrapErrorf(
+				errInvalidOpsIntent,
+				"contract_name metadata field on operation is empty",
+			)
+		}
+		val, ok = op.Metadata["contract_code"]
+		if !ok {
+			return nil, wrapErrorf(
+				errInvalidOpsIntent, "contract_code metadata field missing on operation",
+			)
+		}
+		code, ok := val.(string)
+		if !ok {
+			return nil, wrapErrorf(
+				errInvalidOpsIntent,
+				"contract_code metadata field on operation is not a string: %v",
+				val,
+			)
+		}
+		_, err := hex.DecodeString(code)
+		if err != nil {
+			return nil, wrapErrorf(
+				errInvalidOpsIntent,
+				"failed to hex-decode contract_code metadata field on operation: %s",
+				err,
+			)
+		}
+		if len(code) == 0 {
+			return nil, wrapErrorf(
+				errInvalidOpsIntent,
+				"contract_code metadata field on operation is empty",
+			)
+		}
+		intent.contractCode = code
+		intent.contractName = name
+		if typ == opUpdateContract {
+			intent.contractUpdate = true
 		}
 	case opProxyTransfer, opProxyTransferInner, opTransfer:
 		// NOTE(tav): We may want to add an additional validation step to make
@@ -880,30 +931,53 @@ func (s *Server) parseIntent(ops []*types.Operation) (*txnIntent, *types.Error) 
 	return intent, nil
 }
 
-func decodeOptsFromTransaction(src string) *model.ConstructOpts {
-	split := strings.Split(src, ":")
-	if len(split) != 2 || split[1] == "" {
-		log.Warnf("Failed to find construct opts in transaction data: %q", src)
-		return nil
-	}
-	raw, err := hex.DecodeString(split[1])
-	if err != nil {
-		log.Warnf(
-			"Failed to hex-decode construct opts from transaction data: %q: %s",
-			src, err,
+func decodeContractOps(txn *entities.Transaction, update bool, signed bool) (*types.ConstructionParseResponse, *types.Error) {
+	if len(txn.Arguments) != 2 {
+		return nil, wrapErrorf(
+			errInvalidTransactionPayload,
+			"invalid number of transaction args: %d", len(txn.Arguments),
 		)
-		return nil
 	}
-	opts := &model.ConstructOpts{}
-	err = proto.Unmarshal(raw, opts)
+	raw, err := jsoncdc.Decode(txn.Arguments[0])
 	if err != nil {
-		log.Warnf(
-			"Failed to decode protobuf-encoded construct opts from transaction data: %q: %s",
-			src, err,
+		return nil, wrapErrorf(
+			errInvalidTransactionPayload, "unable to decode transaction arg: %s", err,
 		)
-		return nil
 	}
-	return opts
+	name, ok := raw.ToGoValue().(string)
+	if !ok {
+		return nil, wrapErrorf(
+			errInvalidTransactionPayload, "unable to convert transaction arg to string",
+		)
+	}
+	raw, err = jsoncdc.Decode(txn.Arguments[1])
+	if err != nil {
+		return nil, wrapErrorf(
+			errInvalidTransactionPayload, "unable to decode transaction arg: %s", err,
+		)
+	}
+	code, ok := raw.ToGoValue().(string)
+	if !ok {
+		return nil, wrapErrorf(
+			errInvalidTransactionPayload, "unable to convert transaction arg to string",
+		)
+	}
+	typ := opDeployContract
+	if update {
+		typ = opUpdateContract
+	}
+	return txnOps(txn, []*types.Operation{
+		{
+			Metadata: map[string]interface{}{
+				"contract_code": code,
+				"contract_name": name,
+			},
+			OperationIdentifier: &types.OperationIdentifier{
+				Index: 0,
+			},
+			Type: typ,
+		},
+	}, signed)
 }
 
 func decodeCreateAccountOps(txn *entities.Transaction, proxy bool, signed bool) (*types.ConstructionParseResponse, *types.Error) {
@@ -984,6 +1058,32 @@ func decodeCreateAccountOps(txn *entities.Transaction, proxy bool, signed bool) 
 		}
 	}
 	return txnOps(txn, ops, signed)
+}
+
+func decodeOptsFromTransaction(src string) *model.ConstructOpts {
+	split := strings.Split(src, ":")
+	if len(split) != 2 || split[1] == "" {
+		log.Warnf("Failed to find construct opts in transaction data: %q", src)
+		return nil
+	}
+	raw, err := hex.DecodeString(split[1])
+	if err != nil {
+		log.Warnf(
+			"Failed to hex-decode construct opts from transaction data: %q: %s",
+			src, err,
+		)
+		return nil
+	}
+	opts := &model.ConstructOpts{}
+	err = proto.Unmarshal(raw, opts)
+	if err != nil {
+		log.Warnf(
+			"Failed to decode protobuf-encoded construct opts from transaction data: %q: %s",
+			src, err,
+		)
+		return nil
+	}
+	return opts
 }
 
 func decodeTransferOps(txn *entities.Transaction, proxy bool, signed bool) (*types.ConstructionParseResponse, *types.Error) {

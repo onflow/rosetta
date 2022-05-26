@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/coinbase/rosetta-sdk-go/types"
 	"github.com/onflow/rosetta/indexdb"
 	"github.com/onflow/rosetta/model"
-	"github.com/coinbase/rosetta-sdk-go/types"
 )
 
 // Block implements the /block endpoint.
@@ -286,8 +286,11 @@ func encodeTransferEvents(src []*model.TransferEvent) []*transferEvent {
 			Amount: strconv.FormatUint(event.Amount, 10),
 			Type:   event.Type.String(),
 		}
-		if len(event.Account) > 0 {
-			dst.Account = "0x" + hex.EncodeToString(event.Account)
+		if len(event.Receiver) > 0 {
+			dst.Receiver = "0x" + hex.EncodeToString(event.Receiver)
+		}
+		if len(event.Sender) > 0 {
+			dst.Sender = "0x" + hex.EncodeToString(event.Sender)
 		}
 		events[i] = dst
 	}
