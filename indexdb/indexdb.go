@@ -13,11 +13,11 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/dgraph-io/badger/v3"
 	"github.com/onflow/rosetta/log"
 	"github.com/onflow/rosetta/model"
 	"github.com/onflow/rosetta/process"
 	"github.com/onflow/rosetta/trace"
-	"github.com/dgraph-io/badger/v3"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -36,6 +36,13 @@ var (
 //          isProxyKey p<acct><height-big-endian> = 1
 //                     genesis = model.BlockMeta
 //                     latest = model.BlockMeta
+
+// AccountInfo represents all the balance changes (block height, balance) for an
+// account and whether it's a proxy account or not.
+type AccountInfo struct {
+	Changes [][2]uint64 `json:"changes"`
+	Proxy   bool        `json:"proxy,omitempty"`
+}
 
 // BalanceData represents the indexed balance of an account.
 type BalanceData struct {
@@ -114,6 +121,75 @@ func (s *Store) Accounts() (map[[8]byte]bool, error) {
 	return accts, nil
 }
 
+// AccountsInfo will return a map of the indexed accounts and their
+// corresponding account info.
+func (s *Store) AccountsInfo() (map[string]*AccountInfo, error) {
+	data := map[string]*AccountInfo{}
+	err := s.db.View(func(txn *badger.Txn) error {
+		it := txn.NewIterator(badger.IteratorOptions{})
+		defer it.Close()
+		prefix := []byte("a")
+		it.Seek(prefix)
+		for {
+			if !it.ValidForPrefix(prefix) {
+				break
+			}
+			item := it.Item()
+			key := item.Key()
+			acct := hex.EncodeToString(key[1:9])
+			info, ok := data[acct]
+			if !ok {
+				info = &AccountInfo{}
+				data[acct] = info
+			}
+			balance := uint64(0)
+			err := item.Value(func(val []byte) error {
+				balance = binary.BigEndian.Uint64(val)
+				return nil
+			})
+			if err != nil {
+				return err
+			}
+			info.Changes = append(info.Changes, [2]uint64{
+				binary.BigEndian.Uint64(key[9:]),
+				balance,
+			})
+			it.Next()
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("indexdb: failed to process indexed accounts: %s", err)
+	}
+	err = s.db.View(func(txn *badger.Txn) error {
+		it := txn.NewIterator(badger.IteratorOptions{})
+		defer it.Close()
+		prefix := []byte("p")
+		it.Seek(prefix)
+		for {
+			if !it.ValidForPrefix(prefix) {
+				break
+			}
+			key := it.Item().Key()
+			acct := hex.EncodeToString(key[1:9])
+			info, ok := data[acct]
+			if !ok {
+				return fmt.Errorf(
+					"indexdb: failed to find account balance for proxy account 0x%s",
+					acct,
+				)
+			}
+			info.Proxy = true
+			it.Next()
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("indexdb: failed to process proxy accounts: %s", err)
+	}
+	return data, nil
+}
+
 // BalanceByHash returns the account balance at the given hash.
 func (s *Store) BalanceByHash(acct []byte, hash []byte) (*BalanceData, error) {
 	height, err := s.HeightForHash(hash)
@@ -182,63 +258,12 @@ func (s *Store) BlockByHeight(height uint64) (*BlockData, error) {
 	})
 }
 
-// ExportAccounts will export the accounts stored within the index database, and
-// the block numbers of any balance-changing transactions.
+// ExportAccounts will export a map of the indexed accounts and their
+// corresponding account info.
 func (s *Store) ExportAccounts(filename string) {
-	type AccountInfo struct {
-		Blocks  []uint64 `json:"blocks"`
-		IsProxy bool     `json:"is_proxy"`
-	}
-	data := map[string]*AccountInfo{}
-	err := s.db.View(func(txn *badger.Txn) error {
-		it := txn.NewIterator(badger.IteratorOptions{})
-		defer it.Close()
-		prefix := []byte("a")
-		it.Seek(prefix)
-		for {
-			if !it.ValidForPrefix(prefix) {
-				break
-			}
-			key := it.Item().Key()
-			acct := hex.EncodeToString(key[1:9])
-			info, ok := data[acct]
-			if !ok {
-				info = &AccountInfo{}
-				data[acct] = info
-			}
-			info.Blocks = append(info.Blocks, binary.BigEndian.Uint64(key[9:]))
-			it.Next()
-		}
-		return nil
-	})
+	data, err := s.AccountsInfo()
 	if err != nil {
 		log.Fatalf("Failed to export accounts: %s", err)
-	}
-	err = s.db.View(func(txn *badger.Txn) error {
-		it := txn.NewIterator(badger.IteratorOptions{})
-		defer it.Close()
-		prefix := []byte("p")
-		it.Seek(prefix)
-		for {
-			if !it.ValidForPrefix(prefix) {
-				break
-			}
-			key := it.Item().Key()
-			acct := hex.EncodeToString(key[1:9])
-			info, ok := data[acct]
-			if !ok {
-				return fmt.Errorf(
-					"indexdb: failed to find account balance for proxy account 0x%s",
-					acct,
-				)
-			}
-			info.IsProxy = true
-			it.Next()
-		}
-		return nil
-	})
-	if err != nil {
-		log.Fatalf("Failed to process proxy accounts during export: %s", err)
 	}
 	enc, err := json.Marshal(data)
 	if err != nil {

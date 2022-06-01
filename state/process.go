@@ -7,15 +7,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/onflow/flow-go/model/flow"
+	flowaccess "github.com/onflow/flow/protobuf/go/flow/access"
+	"github.com/onflow/flow/protobuf/go/flow/entities"
+	"github.com/onflow/rosetta/access"
 	"github.com/onflow/rosetta/cache"
 	"github.com/onflow/rosetta/config"
 	"github.com/onflow/rosetta/crypto"
 	"github.com/onflow/rosetta/log"
 	"github.com/onflow/rosetta/model"
 	"github.com/onflow/rosetta/trace"
-	"github.com/onflow/flow-go/model/flow"
-	"github.com/onflow/flow/protobuf/go/flow/access"
-	"github.com/onflow/flow/protobuf/go/flow/entities"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -74,7 +75,7 @@ outer:
 		}
 		var (
 			txns       []*entities.Transaction
-			txnResults []*access.TransactionResultResponse
+			txnResults []*flowaccess.TransactionResultResponse
 		)
 		if !slowPath {
 			client := spork.AccessNodes.Client()
@@ -384,8 +385,13 @@ outer:
 			if col.system {
 				continue
 			}
-		txnloop:
 			for idx, txnResult := range col.txnResults {
+				select {
+				case <-ctx.Done():
+					span.End()
+					return
+				default:
+				}
 				payer := col.txns[idx].Payer
 				txnHash := txnResult.TransactionId
 				// NOTE(tav): Sanity check that the block hashes match in case
@@ -410,31 +416,26 @@ outer:
 				data.Transactions = append(data.Transactions, txn)
 				accountKeys := map[string][]byte{}
 				addrs := [][]byte{}
-				deposits := []*transferEvent{}
+				deposits := map[string]uint64{}
 				fees := uint64(0)
-				feeDeposits := []*transferEvent{}
-				matched := false
-				proxyDeposits := []*proxyDeposit{}
+				proxyDeposits := map[string]uint64{}
 				proxyTransfers := []*proxyTransfer{}
-				withdrawals := []*transferEvent{}
+				withdrawals := map[string]uint64{}
+				// NOTE(tav): We split apart the event processing into two
+				// subsets, as the second set of events might depend on
+				// information from the first set.
 			evtloop:
 				for _, evt := range txnResult.Events {
-					select {
-					case <-ctx.Done():
-						span.End()
-						return
-					default:
-					}
 					switch evt.Type {
 					case "flow.AccountCreated":
-						fields := decodeEvent("AccountCreated", evt, hash, height)
+						fields := decodeEvent("flow.AccountCreated", evt, hash, height)
 						if fields == nil {
 							skipCache = true
 							continue outer
 						}
 						if len(fields) != 1 {
 							log.Errorf(
-								"Found AccountCreated event with %d fields in transaction %x in block %x at height %d",
+								"Found flow.AccountCreated event with %d fields in transaction %x in block %x at height %d",
 								len(fields), txnHash, hash, height,
 							)
 							skipCache = true
@@ -443,31 +444,39 @@ outer:
 						addr, ok := fields[0].([8]byte)
 						if !ok {
 							log.Errorf(
-								"Unable to load address from AccountCreated event in transaction %x in block %x at height %d",
+								"Unable to load address from flow.AccountCreated event in transaction %x in block %x at height %d",
 								txnHash, hash, height,
 							)
 							skipCache = true
 							continue outer
 						}
+						// NOTE(tav): We only care about new accounts if they
+						// are one of our root originators, or are created by
+						// one of our tracked accounts, i.e. have been created
+						// by one of our originators, or an originated account.
 						if i.originators[string(addr[:])] || i.isTracked(payer, newAccounts) {
 							accountKeys[string(addr[:])] = nil
 							addrs = append(addrs, addr[:])
 							newAccounts[string(addr[:])] = false
 							newCounter++
 						}
-
 					case i.typProxyCreated:
-						fields := decodeEvent("Proxy.Created", evt, hash, height)
+						// NOTE(tav): Since FlowColdStorageProxy.Created events
+						// are emitted after flow.AccountCreated, we can process
+						// it within the same loop.
+						fields := decodeEvent("FlowColdStorageProxy.Created", evt, hash, height)
 						if fields == nil {
 							skipCache = true
 							continue outer
 						}
+						// NOTE(tav): We only care about new proxy accounts if
+						// they are created by one of our tracked accounts.
 						if !i.isTracked(payer, newAccounts) {
 							continue evtloop
 						}
 						if len(accountKeys) == 0 {
 							log.Errorf(
-								"Found Proxy.Created event without a corresponding AccountCreated event in transaction %x in block %x at height %d",
+								"Found FlowColdStorageProxy.Created event without a corresponding AccountCreated event in transaction %x in block %x at height %d",
 								txnHash, hash, height,
 							)
 							skipCache = true
@@ -475,7 +484,7 @@ outer:
 						}
 						if len(fields) != 2 {
 							log.Errorf(
-								"Found Proxy.Created event with %d fields in transaction %x in block %x at height %d",
+								"Found FlowColdStorageProxy.Created event with %d fields in transaction %x in block %x at height %d",
 								len(fields), txnHash, hash, height,
 							)
 							skipCache = true
@@ -484,7 +493,7 @@ outer:
 						addr, ok := fields[0].([8]byte)
 						if !ok {
 							log.Errorf(
-								"Unable to load address from Proxy.Created event in transaction %x in block %x at height %d",
+								"Unable to load address from FlowColdStorageProxy.Created event in transaction %x in block %x at height %d",
 								txnHash, hash, height,
 							)
 							skipCache = true
@@ -493,7 +502,7 @@ outer:
 						_, ok = accountKeys[string(addr[:])]
 						if !ok {
 							log.Errorf(
-								"Missing AccountCreated event for address %x from Proxy.Created event in transaction %x in block %x at height %d",
+								"Missing AccountCreated event for address %x from FlowColdStorageProxy.Created event in transaction %x in block %x at height %d",
 								addr, txnHash, hash, height,
 							)
 							skipCache = true
@@ -502,7 +511,7 @@ outer:
 						publicKey, ok := fields[1].(string)
 						if !ok {
 							log.Errorf(
-								"Unable to load public key from Proxy.Created event in transaction %x in block %x at height %d",
+								"Unable to load public key from FlowColdStorageProxy.Created event in transaction %x in block %x at height %d",
 								txnHash, hash, height,
 							)
 							skipCache = true
@@ -511,7 +520,7 @@ outer:
 						uncompressed, err := hex.DecodeString(publicKey)
 						if err != nil {
 							log.Errorf(
-								"Unable to hex decode public key from Proxy.Created event in transaction %x in block %x at height %d: %s",
+								"Unable to hex decode public key from FlowColdStorageProxy.Created event in transaction %x in block %x at height %d: %s",
 								txnHash, hash, height, err,
 							)
 							skipCache = true
@@ -520,7 +529,7 @@ outer:
 						compressed, err := crypto.ConvertFlowPublicKey(uncompressed)
 						if err != nil {
 							log.Errorf(
-								"Unable to compress public key from Proxy.Created event in transaction %x in block %x at height %d: %s",
+								"Unable to compress public key from FlowColdStorageProxy.Created event in transaction %x in block %x at height %d: %s",
 								txnHash, hash, height, err,
 							)
 							skipCache = true
@@ -529,14 +538,19 @@ outer:
 						accountKeys[string(addr[:])] = compressed
 						newAccounts[string(addr[:])] = true
 					case i.typProxyDeposited:
-						fields := decodeEvent("Proxy.Deposited", evt, hash, height)
+						// NOTE(tav): For all proxy accounts originated by us,
+						// we will only ever make deposits to the proxy
+						// account's vault once we've found the account address.
+						// Therefore, we can process these events in the same
+						// loop.
+						fields := decodeEvent("FlowColdStorageProxy.Deposited", evt, hash, height)
 						if fields == nil {
 							skipCache = true
 							continue outer
 						}
 						if len(fields) != 2 {
 							log.Errorf(
-								"Found Proxy.Deposited event with %d fields in transaction %x in block %x at height %d",
+								"Found FlowColdStorageProxy.Deposited event with %d fields in transaction %x in block %x at height %d",
 								len(fields), txnHash, hash, height,
 							)
 							skipCache = true
@@ -545,37 +559,44 @@ outer:
 						addr, ok := fields[0].([8]byte)
 						if !ok {
 							log.Errorf(
-								"Unable to load the `account` address from Proxy.Deposited event in transaction %x in block %x at height %d",
+								"Unable to load the `account` address from FlowColdStorageProxy.Deposited event in transaction %x in block %x at height %d",
 								txnHash, hash, height,
 							)
 							skipCache = true
 							continue outer
-						}
-						if !i.isProxy(addr[:], newAccounts) {
-							continue evtloop
 						}
 						amount, ok := fields[1].(uint64)
 						if !ok {
 							log.Errorf(
-								"Unable to load the `amount` from Proxy.Deposited event in transaction %x in block %x at height %d",
+								"Unable to load the `amount` from FlowColdStorageProxy.Deposited event in transaction %x in block %x at height %d",
 								txnHash, hash, height,
 							)
 							skipCache = true
 							continue outer
 						}
-						proxyDeposits = append(proxyDeposits, &proxyDeposit{
-							amount:   amount,
-							receiver: addr,
+						txn.Events = append(txn.Events, &model.TransferEvent{
+							Amount:   amount,
+							Receiver: addr[:],
+							Type:     model.TransferType_PROXY_DEPOSIT,
 						})
+						// NOTE(tav): We only care about deposits to one of our
+						// proxy accounts.
+						if i.isProxy(addr[:], newAccounts) {
+							proxyDeposits[string(addr[:])] += amount
+						}
 					case i.typProxyTransferred:
-						fields := decodeEvent("Proxy.Transferred", evt, hash, height)
+						// NOTE(tav): For all proxy accounts originated by us,
+						// we will only ever make transfers once we've found the
+						// account address. Therefore, we can process these
+						// events in the same loop.
+						fields := decodeEvent("FlowColdStorageProxy.Transferred", evt, hash, height)
 						if fields == nil {
 							skipCache = true
 							continue outer
 						}
 						if len(fields) != 3 {
 							log.Errorf(
-								"Found Proxy.Transferred event with %d fields in transaction %x in block %x at height %d",
+								"Found FlowColdStorageProxy.Transferred event with %d fields in transaction %x in block %x at height %d",
 								len(fields), txnHash, hash, height,
 							)
 							skipCache = true
@@ -584,41 +605,57 @@ outer:
 						sender, ok := fields[0].([8]byte)
 						if !ok {
 							log.Errorf(
-								"Unable to load the `from` address from Proxy.Transferred event in transaction %x in block %x at height %d",
+								"Unable to load the `from` address from FlowColdStorageProxy.Transferred event in transaction %x in block %x at height %d",
 								txnHash, hash, height,
 							)
 							skipCache = true
 							continue outer
-						}
-						if i.isTracked(sender[:], newAccounts) {
-							matched = true
 						}
 						receiver, ok := fields[1].([8]byte)
 						if !ok {
 							log.Errorf(
-								"Unable to load the `to` address from Proxy.Transferred event in transaction %x in block %x at height %d",
+								"Unable to load the `to` address from FlowColdStorageProxy.Transferred event in transaction %x in block %x at height %d",
 								txnHash, hash, height,
 							)
 							skipCache = true
 							continue outer
-						}
-						if i.isTracked(receiver[:], newAccounts) {
-							matched = true
 						}
 						amount, ok := fields[2].(uint64)
 						if !ok {
 							log.Errorf(
-								"Unable to load the `amount` from Proxy.Transferred event in transaction %x in block %x at height %d",
+								"Unable to load the `amount` from FlowColdStorageProxy.Transferred event in transaction %x in block %x at height %d",
 								txnHash, hash, height,
 							)
 							skipCache = true
 							continue outer
 						}
-						proxyTransfers = append(proxyTransfers, &proxyTransfer{
-							amount:   amount,
-							receiver: receiver[:],
-							sender:   sender[:],
+						txn.Events = append(txn.Events, &model.TransferEvent{
+							Amount:   amount,
+							Receiver: receiver[:],
+							Sender:   sender[:],
+							Type:     model.TransferType_PROXY_WITHDRAWAL,
 						})
+						// NOTE(tav): We only care about transfers from one of
+						// our proxy accounts.
+						if i.isProxy(sender[:], newAccounts) {
+							if i.isTracked(receiver[:], newAccounts) {
+								proxyTransfers = append(proxyTransfers, &proxyTransfer{
+									amount:   amount,
+									receiver: receiver[:],
+									sender:   sender[:],
+								})
+							} else {
+								proxyTransfers = append(proxyTransfers, &proxyTransfer{
+									amount: amount,
+									sender: sender[:],
+								})
+							}
+						}
+					}
+				}
+			evtloop2:
+				for _, evt := range txnResult.Events {
+					switch evt.Type {
 					case i.typTokensDeposited:
 						fields := decodeEvent("FlowToken.TokensDeposited", evt, hash, height)
 						if fields == nil {
@@ -647,7 +684,11 @@ outer:
 								"Ignoring FlowToken.TokensDeposited event with a nil address in transaction %x in block %x at height %d",
 								txnHash, hash, height,
 							)
-							continue evtloop
+							txn.Events = append(txn.Events, &model.TransferEvent{
+								Amount: amount,
+								Type:   model.TransferType_DEPOSIT,
+							})
+							continue evtloop2
 						}
 						receiver, ok := fields[1].([8]byte)
 						if !ok {
@@ -658,38 +699,26 @@ outer:
 							skipCache = true
 							continue outer
 						}
+						txn.Events = append(txn.Events, &model.TransferEvent{
+							Amount:   amount,
+							Receiver: receiver[:],
+							Type:     model.TransferType_DEPOSIT,
+						})
 						if bytes.Equal(receiver[:], i.feeAddr) {
+							// NOTE(tav): When the deposit is to the fee
+							// address, just increment the fee amount.
 							fees += amount
-							feeDeposits = append(feeDeposits, &transferEvent{
-								account: receiver[:],
-								amount:  amount,
-							})
-						} else {
-							if i.isTracked(receiver[:], newAccounts) {
-								// NOTE(tav): We handle this special case, as it's
-								// possible for us to receive a deposit event to one of
-								// our originated proxy accounts, but where the deposit
-								// is to the default FLOW vault and not to the
-								// Proxy.Vault, e.g. due to topping up the minimum
-								// storage balance on an account.
-								if i.isProxy(receiver[:], newAccounts) {
-									for _, proxyDeposit := range proxyDeposits {
-										if receiver == proxyDeposit.receiver && amount == proxyDeposit.amount {
-											matched = true
-											deposits = append(deposits, &transferEvent{
-												account: receiver[:],
-												amount:  amount,
-											})
-										}
-									}
-									continue evtloop
-								}
-								matched = true
-							}
-							deposits = append(deposits, &transferEvent{
-								account: receiver[:],
-								amount:  amount,
-							})
+						} else if i.isTracked(receiver[:], newAccounts) && !i.isProxy(receiver[:], newAccounts) {
+							// NOTE(tav): We only care about deposits to tracked
+							// accounts, as long as they are not one of our
+							// proxy accounts.
+							//
+							// In proxy accounts, deposits to the
+							// FlowColdStorageProxy Vault, as opposed to the
+							// default FlowToken Vault, should have already been
+							// captured by FlowColdStorageProxy.Deposited
+							// events.
+							deposits[string(receiver[:])] += amount
 						}
 					case i.typTokensWithdrawn:
 						fields := decodeEvent("FlowToken.TokensWithdrawn", evt, hash, height)
@@ -719,7 +748,11 @@ outer:
 								"Ignoring FlowToken.TokensWithdrawn event with a nil address in transaction %x in block %x at height %d",
 								txnHash, hash, height,
 							)
-							continue evtloop
+							txn.Events = append(txn.Events, &model.TransferEvent{
+								Amount: amount,
+								Type:   model.TransferType_WITHDRAWAL,
+							})
+							continue evtloop2
 						}
 						sender, ok := fields[1].([8]byte)
 						if !ok {
@@ -730,15 +763,25 @@ outer:
 							skipCache = true
 							continue outer
 						}
-						if i.isTracked(sender[:], newAccounts) {
-							matched = true
-						}
-						withdrawals = append(withdrawals, &transferEvent{
-							account: sender[:],
-							amount:  amount,
+						txn.Events = append(txn.Events, &model.TransferEvent{
+							Amount: amount,
+							Sender: sender[:],
+							Type:   model.TransferType_WITHDRAWAL,
 						})
+						// NOTE(tav): We only care about withdrawals from our
+						// tracked accounts, as long as they are not one of our
+						// proxy accounts.
+						//
+						// In proxy accounts, transfers from the
+						// FlowColdStorageProxy Vault should have already been
+						// captured by FlowColdStorageProxy.Transferred events.
+						if i.isTracked(sender[:], newAccounts) && !i.isProxy(sender[:], newAccounts) {
+							withdrawals[string(sender[:])] += amount
+						}
 					}
 				}
+				// Create operations for the creation of new accounts, including
+				// proxy accounts.
 				for _, addr := range addrs {
 					txn.Operations = append(txn.Operations, &model.Operation{
 						Account:        addr,
@@ -746,137 +789,106 @@ outer:
 						Type:           model.OperationType_CREATE_ACCOUNT,
 					})
 				}
-				for _, deposit := range deposits {
-					txn.Events = append(txn.Events, &model.TransferEvent{
-						Account: deposit.account,
-						Amount:  deposit.amount,
-						Type:    model.TransferType_DEPOSIT,
-					})
-				}
-				for _, deposit := range feeDeposits {
-					txn.Events = append(txn.Events, &model.TransferEvent{
-						Account: deposit.account,
-						Amount:  deposit.amount,
-						Type:    model.TransferType_DEPOSIT,
-					})
-				}
-				for _, withdrawal := range withdrawals {
-					txn.Events = append(txn.Events, &model.TransferEvent{
-						Account: withdrawal.account,
-						Amount:  withdrawal.amount,
-						Type:    model.TransferType_WITHDRAWAL,
-					})
-				}
-				if !matched {
-					continue txnloop
-				}
-				external := !i.isTracked([]byte(payer), newAccounts)
-				// NOTE(tav): We only care about deposits when the payer is
-				// not one of the originated accounts.
-				if external {
-					for _, deposit := range deposits {
-						if i.isTracked(deposit.account, newAccounts) {
-							txn.Operations = append(txn.Operations, &model.Operation{
-								Amount:   deposit.amount,
-								Receiver: deposit.account,
-								Type:     model.OperationType_TRANSFER,
-							})
-							transfers++
-						}
-					}
-					continue txnloop
-				}
-				depositAmounts := map[string]uint64{}
-				withdrawalAmounts := map[string]uint64{}
-				for _, deposit := range deposits {
-					depositAmounts[string(deposit.account)] += deposit.amount
-				}
-				for _, withdrawal := range withdrawals {
-					withdrawalAmounts[string(withdrawal.account)] += withdrawal.amount
-				}
-				if fees > 0 {
+				// Create a fee operation when the fee has been paid for by one
+				// of our tracked accounts.
+				if i.isTracked(payer, newAccounts) && fees > 0 {
 					// NOTE(tav): This is theoretically possible if someone
 					// manually deposits FLOW into the FlowFees contract.
-					if fees > withdrawalAmounts[string(payer)] {
+					if fees > withdrawals[string(payer)] {
 						log.Errorf(
-							"Amount taken from payer %x (%d) is less than the fees (%d) in transaction %x in block %x at height %d",
-							payer, withdrawalAmounts[string(payer)], fees, txnHash, hash, height,
+							"Amount taken from payer 0x%x (%d) is less than the fees (%d) in transaction %x in block %x at height %d",
+							payer, withdrawals[string(payer)], fees, txnHash, hash, height,
 						)
-						fees = withdrawalAmounts[string(payer)]
+						continue outer
 					}
-					withdrawalAmounts[string(payer)] -= fees
+					withdrawals[string(payer)] -= fees
 					txn.Operations = append(txn.Operations, &model.Operation{
-						Account: []byte(payer),
+						Account: payer,
 						Amount:  fees,
 						Type:    model.OperationType_FEE,
 					})
 				}
-				receivers := [][]byte{}
-				received := uint64(0)
-				for acct, amount := range depositAmounts {
-					if i.isTracked([]byte(acct), newAccounts) && amount > 0 {
-						received += amount
-						receivers = append(receivers, []byte(acct))
+				// For every proxy transfer where both the sender and receiver
+				// are one of our accounts, match them up. Otherwise, generate a
+				// single-sided operation.
+				for _, transfer := range proxyTransfers {
+					if transfer.amount == 0 {
+						continue
+					}
+					if len(transfer.receiver) > 0 {
+						if i.isProxy(transfer.receiver, newAccounts) {
+							if transfer.amount > proxyDeposits[string(transfer.receiver)] {
+								log.Errorf(
+									"Amount deposited to proxy account 0x%x (%d) is less than the amount transferred from proxy account 0x%x (%d) in transaction %x in block %x at height %d",
+									transfer.receiver, proxyDeposits[string(transfer.receiver)],
+									transfer.sender, transfer.amount, txnHash, hash, height,
+								)
+								continue outer
+							}
+							proxyDeposits[string(transfer.receiver)] -= transfer.amount
+						} else {
+							if transfer.amount > deposits[string(transfer.receiver)] {
+								log.Errorf(
+									"Amount deposited to account 0x%x (%d) is less than the amount transferred from proxy account 0x%x (%d) in transaction %x in block %x at height %d",
+									transfer.receiver, deposits[string(transfer.receiver)],
+									transfer.sender, transfer.amount, txnHash, hash, height,
+								)
+								continue outer
+							}
+							deposits[string(transfer.receiver)] -= transfer.amount
+						}
+						txn.Operations = append(txn.Operations, &model.Operation{
+							Account:  transfer.sender,
+							Amount:   transfer.amount,
+							Receiver: transfer.receiver,
+							Type:     model.OperationType_PROXY_TRANSFER,
+						})
+					} else {
+						txn.Operations = append(txn.Operations, &model.Operation{
+							Account: transfer.sender,
+							Amount:  transfer.amount,
+							Type:    model.OperationType_PROXY_TRANSFER,
+						})
+					}
+					transfers++
+				}
+				// We merge all remaining deposits and withdrawals with positive
+				// amounts.
+				receiver := ""
+				remDeposits := map[string]uint64{}
+				remWithdrawals := map[string]uint64{}
+				sender := ""
+				for acct, amount := range deposits {
+					if amount > 0 {
+						receiver = acct
+						remDeposits[acct] = amount
 					}
 				}
-				senders := [][]byte{}
-				sent := uint64(0)
-				for acct, amount := range withdrawalAmounts {
-					if i.isTracked([]byte(acct), newAccounts) && amount > 0 {
-						sent += amount
-						senders = append(senders, []byte(acct))
+				for acct, amount := range proxyDeposits {
+					if amount > 0 {
+						receiver = acct
+						remDeposits[acct] = amount
 					}
 				}
-				if sent > 0 && sent == received && len(receivers) == 1 && len(senders) == 1 {
-					typ := model.OperationType_TRANSFER
-					switch len(proxyTransfers) {
-					case 0:
-					case 1:
-						typ = model.OperationType_PROXY_TRANSFER
-						proxy := proxyTransfers[0]
-						if proxy.amount != sent {
-							log.Errorf(
-								"Proxy transfer amount of %d does not match amount inferred from FlowToken events of %d in transaction %x in block %x at height %d",
-								proxy.amount, sent, txnHash, hash, height,
-							)
-							skipCache = true
-							continue outer
-						}
-						if !bytes.Equal(senders[0], proxy.sender) {
-							log.Errorf(
-								"Proxy transfer sender (%x) does not match account inferred from FlowToken events (%x) in transaction %x in block %x at height %d",
-								proxy.sender, senders[0], txnHash, hash, height,
-							)
-							skipCache = true
-							continue outer
-						}
-						if !bytes.Equal(receivers[0], proxy.receiver) {
-							log.Errorf(
-								"Proxy transfer receiver (%x) does not match account inferred from FlowToken events (%x) in transaction %x in block %x at height %d",
-								proxy.receiver, receivers[0], txnHash, hash, height,
-							)
-							skipCache = true
-							continue outer
-						}
-					default:
-						log.Errorf(
-							"Found multiple proxy transfers within transaction %x in block %x at height %d from one of our tracked accounts",
-							txnHash, hash, height,
-						)
-						skipCache = true
-						continue outer
+				for acct, amount := range withdrawals {
+					if amount > 0 {
+						sender = acct
+						remWithdrawals[acct] = amount
 					}
+				}
+				// If there is a one-to-one send/receive of equal amounts, we
+				// match them up. Otherwise, we generate a set of single-sided
+				// operations.
+				if len(remDeposits) == 1 && len(remWithdrawals) == 1 && remDeposits[receiver] == remWithdrawals[sender] {
 					txn.Operations = append(txn.Operations, &model.Operation{
-						Account:  senders[0],
-						Amount:   sent,
-						Receiver: receivers[0],
-						Type:     typ,
+						Account:  []byte(sender),
+						Amount:   remDeposits[receiver],
+						Receiver: []byte(receiver),
+						Type:     model.OperationType_TRANSFER,
 					})
 					transfers++
-					continue txnloop
-				}
-				for acct, amount := range depositAmounts {
-					if i.isTracked([]byte(acct), newAccounts) && amount > 0 {
+				} else {
+					for acct, amount := range remDeposits {
 						txn.Operations = append(txn.Operations, &model.Operation{
 							Amount:   amount,
 							Receiver: []byte(acct),
@@ -884,9 +896,7 @@ outer:
 						})
 						transfers++
 					}
-				}
-				for acct, amount := range withdrawalAmounts {
-					if i.isTracked([]byte(acct), newAccounts) && amount > 0 {
+					for acct, amount := range remWithdrawals {
 						txn.Operations = append(txn.Operations, &model.Operation{
 							Account: []byte(acct),
 							Amount:  amount,
@@ -944,12 +954,7 @@ outer:
 type collectionData struct {
 	system     bool
 	txns       []*entities.Transaction
-	txnResults []*access.TransactionResultResponse
-}
-
-type proxyDeposit struct {
-	amount   uint64
-	receiver [8]byte
+	txnResults []*flowaccess.TransactionResultResponse
 }
 
 type proxyTransfer struct {
@@ -958,17 +963,20 @@ type proxyTransfer struct {
 	sender   []byte
 }
 
-type transferEvent struct {
-	account []byte
-	amount  uint64
-}
-
 func useSlowPath(err error) bool {
+	if access.IsRateLimited(err) {
+		return false
+	}
 	switch status.Code(err) {
+	case codes.Internal:
+		// NOTE(tav): Access API servers sometimes return an Internal error that
+		// wraps around Unimplemented errors from upstream Execution Nodes.
+		return strings.Contains(err.Error(), "Unimplemented")
 	case codes.ResourceExhausted:
-		msg := err.Error()
-
-		return !strings.Contains(msg, "rate limit exceeded")
+		// NOTE(tav): The response size for the batched APIs may sometimes
+		// exceed the limit specified by Access API servers. Since we've already
+		// ruled out rate limit errors, we assume that we've hit that case here.
+		return true
 	case codes.Unimplemented:
 		return true
 	default:

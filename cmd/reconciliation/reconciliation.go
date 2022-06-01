@@ -10,10 +10,10 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/onflow/rosetta/log"
 	"github.com/coinbase/rosetta-sdk-go/asserter"
 	"github.com/coinbase/rosetta-sdk-go/fetcher"
 	"github.com/coinbase/rosetta-sdk-go/types"
+	"github.com/onflow/rosetta/log"
 )
 
 func main() {

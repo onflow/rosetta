@@ -15,13 +15,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/onflow/rosetta/cache"
-	"github.com/onflow/rosetta/config"
-	"github.com/onflow/rosetta/deque"
-	"github.com/onflow/rosetta/indexdb"
-	"github.com/onflow/rosetta/log"
-	"github.com/onflow/rosetta/model"
-	"github.com/onflow/rosetta/process"
 	"github.com/dgraph-io/badger/v2"
 	"github.com/onflow/flow-go/cmd/bootstrap/utils"
 	hotstuff "github.com/onflow/flow-go/consensus/hotstuff/model"
@@ -29,6 +22,13 @@ import (
 	"github.com/onflow/flow-go/follower"
 	"github.com/onflow/flow-go/model/flow"
 	"github.com/onflow/flow-go/storage/badger/operation"
+	"github.com/onflow/rosetta/cache"
+	"github.com/onflow/rosetta/config"
+	"github.com/onflow/rosetta/deque"
+	"github.com/onflow/rosetta/indexdb"
+	"github.com/onflow/rosetta/log"
+	"github.com/onflow/rosetta/model"
+	"github.com/onflow/rosetta/process"
 	"golang.org/x/crypto/openpgp"
 	"golang.org/x/crypto/openpgp/armor"
 )
@@ -333,7 +333,7 @@ func (i *Indexer) indexBlocks(ctx context.Context) {
 }
 
 func (i *Indexer) indexLiveSpork(ctx context.Context, spork *config.Spork, lastIndexed *model.BlockMeta, startHeight uint64) {
-	const maxBlocks = 2000
+	const maxBlocks = 601
 	initial := true
 outer:
 	for {
@@ -363,7 +363,6 @@ outer:
 		if latest.Height == startHeight {
 			continue
 		}
-
 		i.mu.Lock()
 		i.synced = false
 		i.mu.Unlock()
@@ -546,7 +545,7 @@ func (i *Indexer) initWorkers(ctx context.Context) {
 }
 
 func (i *Indexer) isProxy(addr []byte, newAccounts map[string]bool) bool {
-	isProxy, ok := i.accts[string(addr[:])]
+	isProxy, ok := i.accts[string(addr)]
 	if ok {
 		return isProxy
 	}
@@ -554,7 +553,7 @@ func (i *Indexer) isProxy(addr []byte, newAccounts map[string]bool) bool {
 }
 
 func (i *Indexer) isTracked(addr []byte, newAccounts map[string]bool) bool {
-	_, ok := i.accts[string(addr[:])]
+	_, ok := i.accts[string(addr)]
 	if ok {
 		return true
 	}

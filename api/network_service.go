@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/hex"
 
-	"github.com/onflow/rosetta/version"
 	"github.com/coinbase/rosetta-sdk-go/types"
+	"github.com/onflow/rosetta/version"
 )
 
 // NetworkList implements the /network/list endpoint.

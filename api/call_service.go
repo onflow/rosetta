@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/hex"
 	"strconv"
+	"strings"
 
-	"github.com/onflow/rosetta/crypto"
 	"github.com/coinbase/rosetta-sdk-go/types"
 	"github.com/onflow/cadence"
+	"github.com/onflow/flow-go/model/flow"
+	"github.com/onflow/rosetta/crypto"
 )
 
 // Call implements the /call endpoint.
@@ -21,6 +23,10 @@ func (s *Server) Call(ctx context.Context, r *types.CallRequest) (*types.CallRes
 		return s.echo(r.Parameters)
 	case callLatestBlock:
 		return s.latestBlock(ctx, r.Parameters)
+	case callListAccounts:
+		return s.listAccounts(ctx)
+	case callVerifyAddress:
+		return s.verifyAddress(ctx, r.Parameters)
 	default:
 		return nil, errNotImplemented
 	}
@@ -35,11 +41,12 @@ func (s *Server) accountBalances(ctx context.Context, params map[string]interfac
 		return nil, xerr
 	}
 	var (
-		err    error
-		hash   []byte
-		height uint64
+		err  error
+		hash []byte
 	)
+	idempotent := false
 	if param, ok := params["block_hash"]; ok {
+		idempotent = true
 		raw, ok := param.(string)
 		if !ok {
 			return nil, wrapErrorf(
@@ -52,12 +59,6 @@ func (s *Server) accountBalances(ctx context.Context, params map[string]interfac
 				errInvalidBlockHash, "invalid block_hash value: %s", err,
 			)
 		}
-		client := s.DataAccessNodes.Client()
-		hdr, err := client.BlockHeaderByID(ctx, hash)
-		if err != nil {
-			return nil, wrapErr(errInternal, err)
-		}
-		height = hdr.Height
 	} else {
 		client := s.DataAccessNodes.Client()
 		latest, err := client.LatestBlockHeader(ctx)
@@ -65,14 +66,13 @@ func (s *Server) accountBalances(ctx context.Context, params map[string]interfac
 			return nil, wrapErr(errInternal, err)
 		}
 		hash = latest.Id
-		height = latest.Height
 	}
-	onchain, xerr := s.getOnchainData(ctx, addr, hash, height)
+	onchain, xerr := s.getOnchainData(ctx, addr, hash)
 	if xerr != nil {
 		return nil, xerr
 	}
 	return &types.CallResponse{
-		Idempotent: true,
+		Idempotent: idempotent,
 		Result: map[string]interface{}{
 			"default_balance": strconv.FormatUint(onchain.DefaultBalance, 10),
 			"is_proxy":        onchain.IsProxy,
@@ -191,53 +191,59 @@ func (s *Server) getAccountParam(params map[string]interface{}) ([]byte, *types.
 	return s.getAccount(raw)
 }
 
-func (s *Server) getOnchainData(ctx context.Context, addr []byte, block []byte, height uint64) (*onchainData, *types.Error) {
+func (s *Server) getOnchainData(ctx context.Context, addr []byte, block []byte) (*onchainData, *types.Error) {
 	client := s.DataAccessNodes.Client()
-	acct, err := client.AccountAtHeight(ctx, addr, height)
-	if err != nil {
-		return nil, handleExecutionErr(err, "call GetAccountAtBlockHeight")
-	}
-	onchain := &onchainData{
-		DefaultBalance: acct.Balance,
-	}
-	if !s.Chain.IsProxyContractDeployed() {
-		return onchain, nil
+	script := s.scriptGetBalancesBasic
+	scriptName := "get_balances_basic"
+	if s.Chain.IsProxyContractDeployed() {
+		script = s.scriptGetBalances
+		scriptName = "get_balances"
 	}
 	resp, err := client.Execute(
-		ctx, block, s.scriptGetBalances,
+		ctx, block, script,
 		[]cadence.Value{cadence.BytesToAddress(addr)},
 	)
 	if err != nil {
-		return nil, handleExecutionErr(err, "execute get_balances")
+		return nil, handleExecutionErr(err, "execute "+scriptName)
 	}
 	fields, ok := resp.ToGoValue().([]interface{})
 	if !ok {
 		return nil, wrapErrorf(
 			errInternal,
-			"failed to convert get_balances result to Go slice",
+			"failed to convert %s result to Go slice",
+			scriptName,
 		)
 	}
-	if len(fields) != 2 {
+	if len(fields) != 3 {
 		return nil, wrapErrorf(
 			errInternal,
-			"expected 2 fields for the get_balances result: got %d",
-			len(fields),
+			"expected 3 fields for the %s result: got %d",
+			scriptName, len(fields),
 		)
 	}
-	onchain.IsProxy, ok = fields[0].(bool)
+	onchain := &onchainData{}
+	onchain.DefaultBalance, ok = fields[0].(uint64)
 	if !ok {
 		return nil, wrapErrorf(
 			errInternal,
-			"expected first field of the get_balances result to be bool: got %T",
-			fields[0],
+			"expected first field of the %s result to be uint64: got %T",
+			scriptName, fields[0],
 		)
 	}
-	onchain.ProxyBalance, ok = fields[1].(uint64)
+	onchain.IsProxy, ok = fields[1].(bool)
 	if !ok {
 		return nil, wrapErrorf(
 			errInternal,
-			"expected second field of the get_balances result to be uint64: got %T",
-			fields[1],
+			"expected second field of the %s result to be bool: got %T",
+			scriptName, fields[1],
+		)
+	}
+	onchain.ProxyBalance, ok = fields[2].(uint64)
+	if !ok {
+		return nil, wrapErrorf(
+			errInternal,
+			"expected third field of the %s result to be uint64: got %T",
+			scriptName, fields[2],
 		)
 	}
 	return onchain, nil
@@ -255,6 +261,63 @@ func (s *Server) latestBlock(ctx context.Context, params map[string]interface{})
 			"block_hash":      hex.EncodeToString(block.Id),
 			"block_height":    strconv.FormatUint(block.Height, 10),
 			"block_timestamp": strconv.FormatInt(block.Timestamp.AsTime().UnixNano(), 10),
+		},
+	}, nil
+}
+
+func (s *Server) listAccounts(ctx context.Context) (*types.CallResponse, *types.Error) {
+	accts, err := s.Index.AccountsInfo()
+	if err != nil {
+		return nil, wrapErr(errInternal, err)
+	}
+	return &types.CallResponse{
+		Idempotent: false,
+		Result: map[string]interface{}{
+			"accounts": accts,
+		},
+	}, nil
+}
+
+func (s *Server) verifyAddress(ctx context.Context, params map[string]interface{}) (*types.CallResponse, *types.Error) {
+	if s.Offline {
+		return nil, errOfflineMode
+	}
+	acct, xerr := s.getAccountParam(params)
+	if xerr != nil {
+		return &types.CallResponse{
+			Result: map[string]interface{}{
+				"error": "invalid Flow address format",
+				"valid": false,
+			},
+		}, nil
+	}
+	addr := flow.Address{}
+	copy(addr[:], acct)
+	chainID := flow.ChainID("flow-" + s.Chain.Network)
+	if !chainID.Chain().IsValid(addr) {
+		return &types.CallResponse{
+			Result: map[string]interface{}{
+				"error": "invalid address for Flow " + s.Chain.Network,
+				"valid": false,
+			},
+		}, nil
+	}
+	client := s.DataAccessNodes.Client()
+	_, err := client.Account(ctx, acct)
+	if err != nil {
+		if strings.Contains(err.Error(), "account not found") {
+			return &types.CallResponse{
+				Result: map[string]interface{}{
+					"error": "account not found on Flow " + s.Chain.Network,
+					"valid": false,
+				},
+			}, nil
+		}
+		return nil, wrapErr(errInternal, err)
+	}
+	return &types.CallResponse{
+		Result: map[string]interface{}{
+			"valid": true,
 		},
 	}, nil
 }

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/onflow/rosetta/log"
 	"github.com/coinbase/rosetta-sdk-go/types"
+	"github.com/onflow/rosetta/log"
 )
 
 var (

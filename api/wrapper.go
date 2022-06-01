@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/coinbase/rosetta-sdk-go/types"
 	"github.com/onflow/rosetta/log"
 	"github.com/onflow/rosetta/trace"
-	"github.com/coinbase/rosetta-sdk-go/types"
 	"go.uber.org/zap"
 )
 

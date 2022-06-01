@@ -10,6 +10,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/coinbase/rosetta-sdk-go/asserter"
+	"github.com/coinbase/rosetta-sdk-go/server"
+	"github.com/coinbase/rosetta-sdk-go/types"
 	"github.com/onflow/rosetta/access"
 	"github.com/onflow/rosetta/config"
 	"github.com/onflow/rosetta/indexdb"
@@ -18,9 +21,6 @@ import (
 	"github.com/onflow/rosetta/process"
 	"github.com/onflow/rosetta/script"
 	"github.com/onflow/rosetta/state"
-	"github.com/coinbase/rosetta-sdk-go/asserter"
-	"github.com/coinbase/rosetta-sdk-go/server"
-	"github.com/coinbase/rosetta-sdk-go/types"
 )
 
 const (
@@ -28,6 +28,8 @@ const (
 	callAccountPublicKeys = "account_public_keys"
 	callEcho              = "echo"
 	callLatestBlock       = "latest_block"
+	callListAccounts      = "list_accounts"
+	callVerifyAddress     = "verify_address"
 	opCreateAccount       = "create_account"
 	opCreateProxyAccount  = "create_proxy_account"
 	opDeployContract      = "deploy_contract"
@@ -46,6 +48,8 @@ var (
 		callAccountPublicKeys,
 		callEcho,
 		callLatestBlock,
+		callListAccounts,
+		callVerifyAddress,
 	}
 	flowCurrency = &types.Currency{
 		Decimals: 8,
@@ -73,6 +77,7 @@ type Server struct {
 	Indexer                  *state.Indexer
 	Offline                  bool
 	Port                     uint16
+	feeAddr                  []byte
 	genesis                  *model.BlockMeta
 	indexedStateErr          *types.Error
 	mu                       sync.RWMutex // protects indexedStateErr
@@ -83,6 +88,7 @@ type Server struct {
 	scriptCreateProxyAccount []byte
 	scriptDeployContract     []byte
 	scriptGetBalances        []byte
+	scriptGetBalancesBasic   []byte
 	scriptGetProxyNonce      []byte
 	scriptGetProxyPublicKey  []byte
 	scriptProxyTransfer      []byte
@@ -96,6 +102,14 @@ func (s *Server) Run(ctx context.Context) {
 	case "false", "off", "0", "":
 		go s.validateBalances(ctx)
 	}
+	feeAddr, err := hex.DecodeString(s.Chain.Contracts.FlowFees)
+	if err != nil {
+		log.Fatalf(
+			"Invalid FlowFees contract address %q: %s",
+			s.Chain.Contracts.FlowFees, err,
+		)
+	}
+	s.feeAddr = feeAddr
 	s.genesis = s.Index.Genesis()
 	s.networks = []*types.NetworkIdentifier{{
 		Blockchain: "flow",
@@ -150,6 +164,7 @@ func (s *Server) compileScripts() {
 	s.scriptCreateProxyAccount = script.Compile("create_proxy_account", script.CreateProxyAccount, s.Chain)
 	s.scriptDeployContract = script.Compile("deploy_contract", script.DeployContract, s.Chain)
 	s.scriptGetBalances = script.Compile("get_balances", script.GetBalances, s.Chain)
+	s.scriptGetBalancesBasic = script.Compile("get_balances_basic", script.GetBalancesBasic, s.Chain)
 	s.scriptGetProxyNonce = script.Compile("get_proxy_nonce", script.GetProxyNonce, s.Chain)
 	s.scriptGetProxyPublicKey = script.Compile("get_proxy_public_key", script.GetProxyPublicKey, s.Chain)
 	s.scriptProxyTransfer = script.Compile("proxy_transfer", script.ProxyTransfer, s.Chain)
@@ -218,9 +233,10 @@ type innerTxn struct {
 }
 
 type transferEvent struct {
-	Account string `json:"account"`
-	Amount  string `json:"amount"`
-	Type    string `json:"type"`
+	Amount   string `json:"amount"`
+	Receiver string `json:"receiver,omitempty"`
+	Sender   string `json:"sender,omitempty"`
+	Type     string `json:"type"`
 }
 
 type txnIntent struct {

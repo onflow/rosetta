@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/coinbase/rosetta-sdk-go/types"
+	"github.com/onflow/cadence"
 	"github.com/onflow/rosetta/indexdb"
 	"github.com/onflow/rosetta/model"
 	"github.com/onflow/rosetta/trace"
-	"github.com/coinbase/rosetta-sdk-go/types"
-	"github.com/onflow/cadence"
 )
 
 // AccountBalance implements the /account/balance endpoint.
