@@ -32,7 +32,6 @@ var (
 //            blockKey b<height-big-endian> = model.IndexedBlock
 // blockHash2HeightKey c<block-hash> = <height-big-endian>
 // blockHeight2HashKey d<height-big-endian> = <block-hash>
-//           headerKey h<block-hash> = model.BlockHeader
 //          isProxyKey p<acct><height-big-endian> = 1
 //                     genesis = model.BlockMeta
 //                     latest = model.BlockMeta
@@ -709,10 +708,6 @@ func (s *Store) ResetTo(base uint64) error {
 				}
 				key = make([]byte, len(hash)+1)
 				key[0] = 'c'
-				copy(key[1:], hash)
-				delKeys = append(delKeys, key)
-				key = make([]byte, len(hash)+1)
-				key[0] = 'h'
 				copy(key[1:], hash)
 				delKeys = append(delKeys, key)
 			} else {

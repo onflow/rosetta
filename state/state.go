@@ -24,13 +24,14 @@ import (
 	"github.com/onflow/flow-go/storage/badger/operation"
 	"github.com/onflow/rosetta/cache"
 	"github.com/onflow/rosetta/config"
-	"github.com/onflow/rosetta/deque"
 	"github.com/onflow/rosetta/indexdb"
 	"github.com/onflow/rosetta/log"
 	"github.com/onflow/rosetta/model"
 	"github.com/onflow/rosetta/process"
 	"golang.org/x/crypto/openpgp"
 	"golang.org/x/crypto/openpgp/armor"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 const (
@@ -50,12 +51,14 @@ type Indexer struct {
 	accts               map[string]bool
 	consensus           *badger.DB
 	feeAddr             []byte
+	finalizedBlock      flow.Identifier
+	finalizedMu         sync.Mutex // protects finalizedBlock and finalizedSet
+	finalizedSet        bool
 	jobs                chan uint64
 	lastIndexed         *model.BlockMeta
 	liveRoot            *model.BlockMeta
 	mu                  sync.RWMutex // protects lastIndexed and synced
 	originators         map[string]bool
-	queue               *deque.Queue
 	root                *stateSnapshot
 	sealedResults       map[string]string
 	synced              bool
@@ -174,12 +177,15 @@ func (i *Indexer) findRootBlock(ctx context.Context, spork *config.Spork) *model
 	}
 }
 
-func (i *Indexer) getVerifiedParent(ctx context.Context, hash []byte, height uint64) []byte {
+func (i *Indexer) getVerifiedParent(rctx context.Context, hash []byte, height uint64) []byte {
+	ctx := rctx
 	initial := true
+	skipCache := false
+	skipCacheWarned := false
 	spork := i.Chain.SporkFor(height)
 	for {
 		select {
-		case <-ctx.Done():
+		case <-rctx.Done():
 			return nil
 		default:
 		}
@@ -187,6 +193,18 @@ func (i *Indexer) getVerifiedParent(ctx context.Context, hash []byte, height uin
 			initial = false
 		} else {
 			time.Sleep(time.Second)
+		}
+		if skipCache {
+			ctx = cache.Skip(rctx)
+			if !skipCacheWarned {
+				log.Warnf(
+					"Skipping cache for getting verified parent for block %x at height %d",
+					hash, height,
+				)
+				skipCacheWarned = true
+			}
+		} else {
+			ctx = rctx
 		}
 		client := spork.AccessNodes.Client()
 		hdr, err := client.BlockHeaderByHeight(ctx, height)
@@ -202,6 +220,7 @@ func (i *Indexer) getVerifiedParent(ctx context.Context, hash []byte, height uin
 				"Got unexpected header value for block at height %d: expected %x, got %x",
 				height, hash, hdr.Id,
 			)
+			skipCache = true
 			continue
 		}
 		block, err := client.BlockByHeight(ctx, height)
@@ -217,68 +236,17 @@ func (i *Indexer) getVerifiedParent(ctx context.Context, hash []byte, height uin
 				"Got unexpected block value at height %d: expected %x, got %x",
 				height, hash, block.Id,
 			)
+			skipCache = true
 			continue
 		}
 		if !verifyBlockHash(spork, hash, height, hdr, block) {
+			skipCache = true
 			continue
 		}
 		for _, seal := range block.BlockSeals {
 			i.sealedResults[string(seal.BlockId)] = string(seal.ResultId)
 		}
 		return block.ParentId
-	}
-}
-
-func (i *Indexer) getConsensusData(ctx context.Context, blockID flow.Identifier, hdrOnly bool) (*flow.Header, []flow.Identifier) {
-	hash := blockID[:]
-	initial := true
-outer:
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, nil
-		default:
-		}
-		if initial {
-			initial = false
-		} else {
-			time.Sleep(time.Second)
-		}
-		hdr := &flow.Header{}
-		err := i.consensus.View(operation.RetrieveHeader(blockID, hdr))
-		if err != nil {
-			log.Errorf(
-				"Failed to get header for block %x from consensus: %s",
-				hash, err,
-			)
-			continue
-		}
-		if hdrOnly {
-			return hdr, nil
-		}
-		payloadSeals := []flow.Identifier{}
-		err = i.consensus.View(operation.LookupPayloadSeals(blockID, &payloadSeals))
-		if err != nil {
-			log.Errorf(
-				"Failed to get payload seals for block %x from consensus: %s",
-				hash, err,
-			)
-			continue
-		}
-		seals := []flow.Identifier{}
-		for _, sealID := range payloadSeals {
-			seal := &flow.Seal{}
-			err = i.consensus.View(operation.RetrieveSeal(sealID, seal))
-			if err != nil {
-				log.Errorf(
-					"Failed to get seal %x from block %x from consensus: %s",
-					sealID[:], hash, err,
-				)
-				continue outer
-			}
-			seals = append(seals, seal.BlockID)
-		}
-		return hdr, seals
 	}
 }
 
@@ -332,118 +300,196 @@ func (i *Indexer) indexBlocks(ctx context.Context) {
 	}
 }
 
-func (i *Indexer) indexLiveSpork(ctx context.Context, spork *config.Spork, lastIndexed *model.BlockMeta, startHeight uint64) {
-	const maxBlocks = 601
-	initial := true
-outer:
+func (i *Indexer) indexLiveSpork(rctx context.Context, spork *config.Spork, lastIndexed *model.BlockMeta, startHeight uint64) {
+	// We consider ourselves synced if we're within a minute of tip.
+	const (
+		syncWindow = time.Minute
+	)
+	blocks := map[string]uint64{}
+	ctx := rctx
+	height := startHeight
+	parent := lastIndexed.Hash
+	synced := false
+	useConsensus := i.Chain.UseConsensusFollwer
+	// NOTE(tav): Since the root block of a live spork is self sealed, we avoid
+	// trying to detect its seal within descendant blocks.
+	if height == spork.RootBlock {
+		i.processBlock(ctx, spork, height, i.liveRoot.Hash)
+		height++
+		parent = i.liveRoot.Hash
+	}
 	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-		if initial {
-			initial = false
-		} else {
-			time.Sleep(time.Second)
-		}
-		client := spork.AccessNodes.Client()
-		latest, err := client.LatestBlockHeader(ctx)
-		if err != nil {
-			log.Errorf("Failed to fetch latest sealed block: %s", err)
-			continue
-		}
-		if latest.Height < startHeight {
-			log.Errorf(
-				"Height of latest sealed block (%d) is less than last indexed height (%d)",
-				latest.Height, startHeight,
-			)
-			continue
-		}
-		if latest.Height == startHeight {
-			continue
-		}
-		i.mu.Lock()
-		i.synced = false
-		i.mu.Unlock()
-		sealCount := 0
-		sealMap := map[string]*blockSeal{}
-		seals := []*blockSeal{}
-		parent := lastIndexed.Hash
-		for height := startHeight; height <= latest.Height; height++ {
-			initial := true
-			for {
-				select {
-				case <-ctx.Done():
-					return
+		initial := true
+		skipCache := false
+		skipCacheWarned := false
+	inner:
+		for {
+			select {
+			case <-rctx.Done():
+				return
+			default:
+			}
+			if initial {
+				initial = false
+			} else {
+				time.Sleep(time.Second)
+			}
+			if skipCache {
+				ctx = cache.Skip(rctx)
+				if !skipCacheWarned {
+					log.Warnf(
+						"Skipping cache for retrieving block at height %d",
+						height,
+					)
+					skipCacheWarned = true
+				}
+			} else {
+				ctx = rctx
+			}
+			if useConsensus {
+				i.finalizedMu.Lock()
+				if !i.finalizedSet {
+					i.finalizedMu.Unlock()
+					continue
+				}
+				i.finalizedSet = false
+				i.finalizedMu.Unlock()
+			}
+			client := spork.AccessNodes.Client()
+			hdr, err := client.BlockHeaderByHeight(ctx, height)
+			if err != nil {
+				switch status.Code(err) {
+				case codes.NotFound:
+					// NOTE(tav): Since Flow doesn't produce blocks at exact
+					// intervals, it is possible for us to get NotFound errors
+					// for a little while.
+					if synced {
+						time.Sleep(time.Second)
+					} else {
+						log.Errorf(
+							"Failed to fetch header for block at height %d: %s",
+							height, err,
+						)
+					}
 				default:
-				}
-				if initial {
-					initial = false
-				} else {
-					time.Sleep(time.Second)
-				}
-				client := spork.AccessNodes.Client()
-				hdr, err := client.BlockHeaderByHeight(ctx, height)
-				if err != nil {
 					log.Errorf(
 						"Failed to fetch header for block at height %d: %s",
 						height, err,
 					)
-					continue
 				}
-				block, err := client.BlockByHeight(ctx, height)
+				continue
+			}
+			block, err := client.BlockByHeight(ctx, height)
+			if err != nil {
+				log.Errorf("Failed to fetch block at height %d: %s", height, err)
+				continue
+			}
+			if !bytes.Equal(block.ParentId, parent) {
+				log.Errorf(
+					"Unexpected parent hash found for block %x at height %d: expected %x, got %x",
+					block.Id, height, parent, block.ParentId,
+				)
+				skipCache = true
+				continue
+			}
+			if !verifyBlockHash(spork, block.Id, height, hdr, block) {
+				skipCache = true
+				continue
+			}
+			if useConsensus {
+				blockID := flow.Identifier{}
+				err := i.consensus.View(operation.LookupBlockHeight(height, &blockID))
 				if err != nil {
-					log.Errorf("Failed to fetch block at height %d: %s", height, err)
-					continue
-				}
-				if !bytes.Equal(block.ParentId, parent) {
 					log.Errorf(
-						"Unexpected parent hash found for block %x at height %d: expected %x, got %x",
-						block.Id, height, parent, block.ParentId,
+						"Failed to get block ID for height %d from consensus: %s",
+						height, err,
 					)
-					continue outer
-				}
-				if !verifyBlockHash(spork, block.Id, height, hdr, block) {
 					continue
 				}
-				seal := &blockSeal{
-					hash:   block.Id,
-					height: height,
+				if !bytes.Equal(blockID[:], block.Id) {
+					log.Errorf(
+						"Mismatching block ID found for height %d: %x from Access API, %x from consensus",
+						height, block.Id, blockID[:],
+					)
+					skipCache = true
+					continue
 				}
-				sealMap[string(block.Id)] = seal
-				seals = append(seals, seal)
-				for _, src := range block.BlockSeals {
-					seal, ok := sealMap[string(src.BlockId)]
-					if !ok {
-						continue
+			}
+			log.Infof("Retrieved block %x at height %d", block.Id, block.Height)
+			blocks[string(block.Id)] = height
+			// NOTE(tav): We assume that block seals will only ever be seen in
+			// block height order.
+			for _, seal := range block.BlockSeals {
+				blockHeight, ok := blocks[string(seal.BlockId)]
+				if !ok {
+					log.Warnf(
+						"Skipping seal for block %x in block %x at height %d",
+						seal.BlockId, block.Id, height,
+					)
+					continue
+				}
+				// NOTE(tav): Without using Consensus Follower, we're
+				// implicitly trusting the block seal returned by the Access
+				// API server. This is a major security risk.
+				if useConsensus {
+					blockID := flow.Identifier{}
+					copy(blockID[:], seal.BlockId)
+					sealID := flow.Identifier{}
+					err := i.consensus.View(operation.LookupBlockSeal(blockID, &sealID))
+					if err != nil {
+						log.Errorf(
+							"Failed to get seal ID for block %x from consensus: %s",
+							seal.BlockId, err,
+						)
+						continue inner
 					}
-					seal.resultID = src.ResultId
-					sealCount++
+					blockSeal := &flow.Seal{}
+					err = i.consensus.View(operation.RetrieveSeal(sealID, blockSeal))
+					if err != nil {
+						log.Errorf(
+							"Failed to get seal %x for block %x from consensus: %s",
+							sealID[:], seal.BlockId, err,
+						)
+						continue inner
+					}
+					if !bytes.Equal(seal.BlockId, blockSeal.BlockID[:]) {
+						log.Errorf(
+							"Unverifiable seal found in block %x at height %d: got seal for block %x via Acccess API, found seal for block %x via consensus",
+							block.Id, height, seal.BlockId, blockSeal.BlockID[:],
+						)
+						continue inner
+					}
+					if !bytes.Equal(seal.ResultId, blockSeal.ResultID[:]) {
+						log.Errorf(
+							"Unverifiable execution result for block %x found in block %x at height %d: got %x via Acccess API, got %x via consensus",
+							seal.BlockId, block.Id, height, seal.ResultId, blockSeal.ResultID[:],
+						)
+						continue inner
+					}
 				}
-				parent = block.Id
-				log.Infof("Retrieved block %x at height %d", block.Id, block.Height)
-				break
+				i.sealedResults[string(seal.BlockId)] = string(seal.ResultId)
+				i.processBlock(ctx, spork, blockHeight, seal.BlockId)
+				delete(blocks, string(seal.BlockId))
 			}
-			if sealCount > maxBlocks {
-				break
+			height++
+			parent = block.Id
+			if time.Since(block.Timestamp.AsTime()) < syncWindow {
+				if !synced {
+					log.Infof("Indexer is close to tip")
+					synced = true
+					i.mu.Lock()
+					i.synced = true
+					i.mu.Unlock()
+				}
+			} else if synced {
+				log.Errorf("Indexer is not close to tip")
+				synced = false
+				i.mu.Lock()
+				i.synced = false
+				i.mu.Unlock()
 			}
+			break
 		}
-		for _, seal := range seals {
-			if len(seal.resultID) > 0 || seal.height == spork.RootBlock {
-				i.sealedResults[string(seal.hash)] = string(seal.resultID)
-				i.processBlock(ctx, spork, seal.height, seal.hash)
-			} else {
-				break
-			}
-		}
-		i.mu.Lock()
-		lastIndexed = i.lastIndexed.Clone()
-		if latest.Height-lastIndexed.Height < i.Chain.SporkSyncedTolerance {
-			i.synced = true
-		}
-		i.mu.Unlock()
-		startHeight = lastIndexed.Height + 1
 	}
 }
 
@@ -465,6 +511,14 @@ func (i *Indexer) indexPastSporks(ctx context.Context, lastIndexed *model.BlockM
 		log.Infof("Retrieved block %x at height %d", hash, height)
 	}
 	if !bytes.Equal(lastIndexed.Hash, parent) {
+		// NOTE(tav): If we've arrived at this state, it's effectively a fatal
+		// error as we've already done our best to verify the chain of parent
+		// block hashes — at least as much as Flow's data integrity support will
+		// allow us.
+		//
+		// This will most likely only happen if we got corrupted block data when
+		// we looked up the "genesis" block, i.e. the "root" block of the first
+		// spork amongst the configured sporks.
 		log.Errorf(
 			"Unable to establish a hash chain from live spork root block to last indexed block %x at height %d: found %x as parent instead",
 			lastIndexed.Hash, lastIndexed.Height, parent,
@@ -504,7 +558,6 @@ func (i *Indexer) initState() {
 	for _, addr := range i.Chain.Originators {
 		i.originators[string(addr)] = true
 	}
-	i.queue = deque.New(1024)
 	i.sealedResults = map[string]string{}
 	i.typProxyCreated = fmt.Sprintf("A.%s.FlowColdStorageProxy.Created", i.Chain.Contracts.FlowColdStorageProxy)
 	i.typProxyDeposited = fmt.Sprintf("A.%s.FlowColdStorageProxy.Deposited", i.Chain.Contracts.FlowColdStorageProxy)
@@ -571,8 +624,14 @@ func (i *Indexer) lastIndexedHeight() uint64 {
 }
 
 func (i *Indexer) onBlockFinalized(f *hotstuff.Block) {
-	log.Infof("New block finalized: %x", f.BlockID[:])
-	i.queue.Push(f.BlockID)
+	log.Infof(
+		"Got finalized block via consensus follower: %x (block timestamp: %s)",
+		f.BlockID[:], f.Timestamp.Format(time.RFC3339),
+	)
+	i.finalizedMu.Lock()
+	i.finalizedBlock = f.BlockID
+	i.finalizedSet = true
+	i.finalizedMu.Unlock()
 }
 
 func (i *Indexer) runConsensusFollower(ctx context.Context) {
@@ -647,7 +706,7 @@ func (i *Indexer) scheduleJobs(ctx context.Context, startHeight uint64) {
 		default:
 		}
 		client := pool.Client()
-		block, err := client.LatestBlockHeader(ctx)
+		block, err := client.LatestFinalizedBlockHeader(ctx)
 		if err != nil {
 			log.Errorf("Failed to fetch latest sealed block: %s", err)
 			time.Sleep(time.Second)
@@ -691,12 +750,6 @@ func download(ctx context.Context, src string) []byte {
 		}
 		return data
 	}
-}
-
-type blockSeal struct {
-	hash     []byte
-	height   uint64
-	resultID []byte
 }
 
 type stateSnapshot struct {

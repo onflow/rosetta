@@ -938,7 +938,7 @@ func decodeContractOps(txn *entities.Transaction, update bool, signed bool) (*ty
 			"invalid number of transaction args: %d", len(txn.Arguments),
 		)
 	}
-	raw, err := jsoncdc.Decode(txn.Arguments[0])
+	raw, err := jsoncdc.Decode(access.NoopMemoryGauge, txn.Arguments[0])
 	if err != nil {
 		return nil, wrapErrorf(
 			errInvalidTransactionPayload, "unable to decode transaction arg: %s", err,
@@ -950,7 +950,7 @@ func decodeContractOps(txn *entities.Transaction, update bool, signed bool) (*ty
 			errInvalidTransactionPayload, "unable to convert transaction arg to string",
 		)
 	}
-	raw, err = jsoncdc.Decode(txn.Arguments[1])
+	raw, err = jsoncdc.Decode(access.NoopMemoryGauge, txn.Arguments[1])
 	if err != nil {
 		return nil, wrapErrorf(
 			errInvalidTransactionPayload, "unable to decode transaction arg: %s", err,
@@ -988,7 +988,7 @@ func decodeCreateAccountOps(txn *entities.Transaction, proxy bool, signed bool) 
 			"invalid number of transaction args: %d", len(txn.Arguments),
 		)
 	}
-	raw, err := jsoncdc.Decode(txn.Arguments[0])
+	raw, err := jsoncdc.Decode(access.NoopMemoryGauge, txn.Arguments[0])
 	if err != nil {
 		return nil, wrapErrorf(
 			errInvalidTransactionPayload, "unable to decode transaction arg: %s", err,
@@ -1102,7 +1102,7 @@ func decodeTransferOps(txn *entities.Transaction, proxy bool, signed bool) (*typ
 	typ := opTransfer
 	if proxy {
 		typ = opProxyTransfer
-		raw, err := jsoncdc.Decode(txn.Arguments[0])
+		raw, err := jsoncdc.Decode(access.NoopMemoryGauge, txn.Arguments[0])
 		if err != nil {
 			return nil, wrapErrorf(
 				errInvalidTransactionPayload, "unable to decode sender transaction arg: %s", err,
@@ -1117,7 +1117,7 @@ func decodeTransferOps(txn *entities.Transaction, proxy bool, signed bool) (*typ
 		sender = addr[:]
 		idx++
 	}
-	raw, err := jsoncdc.Decode(txn.Arguments[idx])
+	raw, err := jsoncdc.Decode(access.NoopMemoryGauge, txn.Arguments[idx])
 	if err != nil {
 		return nil, wrapErrorf(
 			errInvalidTransactionPayload, "unable to decode receiver transaction arg: %s", err,
@@ -1129,7 +1129,7 @@ func decodeTransferOps(txn *entities.Transaction, proxy bool, signed bool) (*typ
 			errInvalidTransactionPayload, "unable to convert receiver arg to address",
 		)
 	}
-	raw, err = jsoncdc.Decode(txn.Arguments[idx+1])
+	raw, err = jsoncdc.Decode(access.NoopMemoryGauge, txn.Arguments[idx+1])
 	if err != nil {
 		return nil, wrapErrorf(
 			errInvalidTransactionPayload, "unable to decode amount transaction arg: %s", err,
@@ -1144,7 +1144,7 @@ func decodeTransferOps(txn *entities.Transaction, proxy bool, signed bool) (*typ
 	if proxy {
 		// NOTE(tav): We only decode the nonce and sig args to sanity check the
 		// argument types.
-		raw, err = jsoncdc.Decode(txn.Arguments[3])
+		raw, err = jsoncdc.Decode(access.NoopMemoryGauge, txn.Arguments[3])
 		if err != nil {
 			return nil, wrapErrorf(
 				errInvalidTransactionPayload, "unable to decode nonce transaction arg: %s", err,
@@ -1156,7 +1156,7 @@ func decodeTransferOps(txn *entities.Transaction, proxy bool, signed bool) (*typ
 				errInvalidTransactionPayload, "unable to convert nonce transaction arg to int64",
 			)
 		}
-		raw, err = jsoncdc.Decode(txn.Arguments[4])
+		raw, err = jsoncdc.Decode(access.NoopMemoryGauge, txn.Arguments[4])
 		if err != nil {
 			return nil, wrapErrorf(
 				errInvalidTransactionPayload, "unable to decode sig transaction arg: %s", err,

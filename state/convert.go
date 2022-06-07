@@ -15,6 +15,7 @@ import (
 	"github.com/onflow/flow-go/model/flow"
 	"github.com/onflow/flow-go/storage/merkle"
 	"github.com/onflow/flow/protobuf/go/flow/entities"
+	"github.com/onflow/rosetta/access"
 	"github.com/onflow/rosetta/config"
 	"github.com/onflow/rosetta/log"
 )
@@ -81,7 +82,7 @@ func convertExecutionResult(hash []byte, height uint64, result *entities.Executi
 }
 
 func decodeEvent(typ string, evt *entities.Event, hash []byte, height uint64) []interface{} {
-	val, err := jsoncdc.Decode(evt.Payload)
+	val, err := jsoncdc.Decode(access.NoopMemoryGauge, evt.Payload)
 	if err != nil {
 		log.Errorf(
 			"Failed to decode %s event payload in transaction %x in block %x at height %d: %s",
