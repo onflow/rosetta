@@ -16,6 +16,7 @@ import (
 	libp2ptls "github.com/libp2p/go-libp2p-tls"
 	"github.com/onflow/cadence"
 	jsoncdc "github.com/onflow/cadence/encoding/json"
+	"github.com/onflow/cadence/runtime/common"
 	"github.com/onflow/flow-go/crypto"
 	"github.com/onflow/flow-go/network/p2p/keyutils"
 	"github.com/onflow/flow/protobuf/go/flow/access"
@@ -44,6 +45,12 @@ const (
 // https://github.com/onflow/flow-go/blob/master/engine/access/rpc/rate_limit_interceptor.go
 const (
 	rateLimitText = "rate limit reached"
+)
+
+var (
+	// NoopMemoryGauge provides a no-op implementation of Cadence's
+	// common.MemoryGauge.
+	NoopMemoryGauge = MemoryGauge{}
 )
 
 var (
@@ -262,7 +269,7 @@ func (c Client) Execute(ctx context.Context, blockID []byte, script []byte, args
 		trace.EndSpanErr(span, err)
 		return nil, err
 	}
-	val, err := jsoncdc.Decode(resp.Value)
+	val, err := jsoncdc.Decode(NoopMemoryGauge, resp.Value)
 	if err != nil {
 		err := fmt.Errorf(
 			"access: failed to decode Cadence value for ExecuteScriptAtBlockID: %s",
@@ -303,6 +310,26 @@ func (c Client) LatestBlockHeader(ctx context.Context) (*entities.BlockHeader, e
 		ctx,
 		&access.GetLatestBlockHeaderRequest{
 			IsSealed: true,
+		},
+	)
+	cancel()
+	if err != nil {
+		trace.EndSpanErr(span, err)
+		return nil, err
+	}
+	trace.EndSpanOk(span)
+	return resp.Block, nil
+}
+
+// LatestFinalizedBlockHeader returns the block header for the most recently
+// finalized block, i.e. one which hasn't been sealed yet.
+func (c Client) LatestFinalizedBlockHeader(ctx context.Context) (*entities.BlockHeader, error) {
+	ctx, span := c.newSpan(ctx, "flow.access_api.LatestFinalizedBlockHeader")
+	ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
+	resp, err := c.client.GetLatestBlockHeader(
+		ctx,
+		&access.GetLatestBlockHeaderRequest{
+			IsSealed: false,
 		},
 	)
 	cancel()
@@ -433,6 +460,15 @@ func (c Client) TransactionsByBlockID(ctx context.Context, blockID []byte) ([]*e
 
 func (c Client) newSpan(ctx context.Context, name string) (context.Context, trace.Span) {
 	return trace.NewSpan(ctx, name, trace.String("server", c.addr))
+}
+
+// MemoryGauge implements a no-op memory gauge to support Cadence JSON decoding.
+type MemoryGauge struct {
+}
+
+// MeterMemory implements the common.MemoryGauge interface.
+func (m MemoryGauge) MeterMemory(usage common.MemoryUsage) error {
+	return nil
 }
 
 // NodeConfig defines the metadata needed to securely connect to an Access API

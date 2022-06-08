@@ -79,7 +79,6 @@ outer:
 		)
 		if !slowPath {
 			client := spork.AccessNodes.Client()
-
 			txns, err = client.TransactionsByBlockID(ctx, hash)
 			if err != nil {
 				log.Errorf(
@@ -279,98 +278,83 @@ outer:
 			)
 			time.Sleep(time.Second)
 		}
-		// TODO(tav): Once Flow eventually implements the splitting up of
-		// collections across multiple chunks, we would need to update the
-		// events hash verification mechanism.
-		if len(execResult.Chunks) != len(eventHashes) {
-			log.Errorf(
-				"Execution result for block %x at height %d contains %d chunks, expected %d",
-				hash, height, len(execResult.Chunks), len(eventHashes),
+		if skip {
+			log.Warnf(
+				"Skipping data integrity checks for block %x at height %d",
+				hash, height,
 			)
-			if !skip {
+		} else {
+			// TODO(tav): Once Flow eventually implements the splitting up of
+			// collections across multiple chunks, we would need to update the
+			// events hash verification mechanism.
+			if len(execResult.Chunks) != len(eventHashes) {
+				log.Errorf(
+					"Execution result for block %x at height %d contains %d chunks, expected %d",
+					hash, height, len(execResult.Chunks), len(eventHashes),
+				)
 				skipCache = true
 				continue
 			}
-		}
-		for idx, eventHash := range eventHashes {
-			chunk := execResult.Chunks[idx]
-			if chunk == nil {
-				log.Errorf(
-					"Got unexpected nil chunk at offset %d in the execution result for block %x at height %d",
-					idx, hash, height,
-				)
-				if skip {
-					continue
+			for idx, eventHash := range eventHashes {
+				chunk := execResult.Chunks[idx]
+				if chunk == nil {
+					log.Errorf(
+						"Got unexpected nil chunk at offset %d in the execution result for block %x at height %d",
+						idx, hash, height,
+					)
+					skipCache = true
+					continue outer
 				}
-				skipCache = true
-				continue outer
-			}
-			if !bytes.Equal(chunk.EventCollection, eventHash[:]) {
-				log.Errorf(
-					"Got mismatching event hash within chunk at offset %d of block %x at height %d: expected %x (from events), got %x (from execution result)",
-					idx, hash, height, eventHash[:], chunk.EventCollection,
-				)
-				if skip {
-					continue
+				if !bytes.Equal(chunk.EventCollection, eventHash[:]) {
+					log.Errorf(
+						"Got mismatching event hash within chunk at offset %d of block %x at height %d: expected %x (from events), got %x (from execution result)",
+						idx, hash, height, eventHash[:], chunk.EventCollection,
+					)
+					skipCache = true
+					continue outer
 				}
-				skipCache = true
-				continue outer
 			}
-		}
-		exec, ok := convertExecutionResult(hash, height, execResult)
-		if !ok {
-			skipCache = true
-			continue
-		}
-		resultID := deriveExecutionResult(spork, exec)
-		sealedResult, ok := i.sealedResults[string(hash)]
-		// NOTE(tav): Skip execution result check for the root block of a spork
-		// as it is self-sealed.
-		if spork.Prev != nil && height == spork.RootBlock {
-			sealedResult = string(resultID[:])
-		}
-		if ok {
-			if string(resultID[:]) != sealedResult {
-				log.Errorf(
-					"Got mismatching execution result hash for block %x at height %d: expected %x, got %x",
-					hash, height, sealedResult, resultID[:],
-				)
-				if !skip {
+			exec, ok := convertExecutionResult(hash, height, execResult)
+			if !ok {
+				skipCache = true
+				continue
+			}
+			resultID := deriveExecutionResult(spork, exec)
+			sealedResult, ok := i.sealedResults[string(hash)]
+			// NOTE(tav): Skip the execution result check for the root block of
+			// a spork as it is self-sealed.
+			if spork.Prev != nil && height == spork.RootBlock {
+				sealedResult, ok = string(resultID[:]), true
+			}
+			if ok {
+				if string(resultID[:]) != sealedResult {
+					log.Errorf(
+						"Got mismatching execution result hash for block %x at height %d: expected %x, got %x",
+						hash, height, sealedResult, resultID[:],
+					)
 					skipCache = true
 					continue
 				}
-			}
-		} else if spork.Next == nil {
-			if skip {
-				log.Errorf(
-					"No sealed result found for block %x at height %d in the live spork (skipping)",
-					hash, height,
-				)
-			} else {
+			} else if spork.Next == nil {
 				log.Fatalf(
 					"No sealed result found for block %x at height %d in the live spork",
 					hash, height,
 				)
-			}
-		} else {
-			// NOTE(tav): The last few blocks of a spork may not be sealed with
-			// a result. Instead, they are implicitly sealed by the root
-			// protocol state snapshot.
-			if skip {
-				log.Errorf(
-					"No sealed result found for block %x at height %d (skipping)",
-					hash, height,
-				)
-			} else if height >= spork.Next.RootBlock-i.Chain.SporkSealTolerance {
-				log.Errorf(
-					"No sealed result found for block %x at height %d (within spork end tolerance)",
-					hash, height,
-				)
 			} else {
-				log.Fatalf(
-					"No sealed result found for block %x at height %d",
-					hash, height,
-				)
+				// NOTE(tav): The last few blocks of a spork may not be sealed with
+				// a result. Instead, they are implicitly sealed by the root
+				// protocol state snapshot.
+				if height >= spork.Next.RootBlock-i.Chain.SporkSealTolerance {
+					log.Errorf(
+						"No sealed result found for block %x at height %d (within spork seal tolerance)",
+						hash, height,
+					)
+				} else {
+					log.Fatalf(
+						"No sealed result found for block %x at height %d",
+						hash, height,
+					)
+				}
 			}
 		}
 		data := &model.IndexedBlock{
@@ -401,7 +385,9 @@ outer:
 						"Found unexpected block %x in the transaction result for %x in block %x at height %d",
 						txnResult.BlockId, txnHash, hash, height,
 					)
-					if !skip {
+					if skip {
+						continue
+					} else {
 						skipCache = true
 						continue outer
 					}
@@ -794,11 +780,17 @@ outer:
 				if i.isTracked(payer, newAccounts) && fees > 0 {
 					// NOTE(tav): This is theoretically possible if someone
 					// manually deposits FLOW into the FlowFees contract.
+					//
+					// We explicitly disallow making direct transfers to the fee
+					// address within transaction construction. But, just in
+					// case, we add this additional check here which is
+					// effectively a fatal error.
 					if fees > withdrawals[string(payer)] {
 						log.Errorf(
 							"Amount taken from payer 0x%x (%d) is less than the fees (%d) in transaction %x in block %x at height %d",
 							payer, withdrawals[string(payer)], fees, txnHash, hash, height,
 						)
+						skipCache = true
 						continue outer
 					}
 					withdrawals[string(payer)] -= fees
@@ -823,6 +815,7 @@ outer:
 									transfer.receiver, proxyDeposits[string(transfer.receiver)],
 									transfer.sender, transfer.amount, txnHash, hash, height,
 								)
+								skipCache = true
 								continue outer
 							}
 							proxyDeposits[string(transfer.receiver)] -= transfer.amount
@@ -833,6 +826,7 @@ outer:
 									transfer.receiver, deposits[string(transfer.receiver)],
 									transfer.sender, transfer.amount, txnHash, hash, height,
 								)
+								skipCache = true
 								continue outer
 							}
 							deposits[string(transfer.receiver)] -= transfer.amount

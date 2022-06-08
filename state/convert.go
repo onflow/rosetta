@@ -15,6 +15,7 @@ import (
 	"github.com/onflow/flow-go/model/flow"
 	"github.com/onflow/flow-go/storage/merkle"
 	"github.com/onflow/flow/protobuf/go/flow/entities"
+	"github.com/onflow/rosetta/access"
 	"github.com/onflow/rosetta/config"
 	"github.com/onflow/rosetta/log"
 )
@@ -81,7 +82,7 @@ func convertExecutionResult(hash []byte, height uint64, result *entities.Executi
 }
 
 func decodeEvent(typ string, evt *entities.Event, hash []byte, height uint64) []interface{} {
-	val, err := jsoncdc.Decode(evt.Payload)
+	val, err := jsoncdc.Decode(access.NoopMemoryGauge, evt.Payload)
 	if err != nil {
 		log.Errorf(
 			"Failed to decode %s event payload in transaction %x in block %x at height %d: %s",
@@ -103,9 +104,16 @@ func decodeEvent(typ string, evt *entities.Event, hash []byte, height uint64) []
 }
 
 func deriveBlockHash(spork *config.Spork, hdr flowHeader) flow.Identifier {
-	if hdr.Timestamp.Location() != time.UTC {
-		hdr.Timestamp = hdr.Timestamp.UTC()
+	switch spork.Version {
+	case 1, 2:
+		return deriveBlockHashV1(hdr)
+	case 3:
+		return deriveBlockHashV3(hdr)
 	}
+	panic("unreachable code")
+}
+
+func deriveBlockHashV1(hdr flowHeader) flow.Identifier {
 	dst := struct {
 		ChainID            flow.ChainID
 		ParentID           flow.Identifier
@@ -130,11 +138,36 @@ func deriveBlockHash(spork *config.Spork, hdr flowHeader) flow.Identifier {
 	return flow.MakeID(dst)
 }
 
+func deriveBlockHashV3(hdr flowHeader) flow.Identifier {
+	dst := struct {
+		ChainID            flow.ChainID
+		ParentID           flow.Identifier
+		Height             uint64
+		PayloadHash        flow.Identifier
+		Timestamp          uint64
+		View               uint64
+		ParentVoterIndices []byte
+		ParentVoterSigData []byte
+		ProposerID         flow.Identifier
+	}{
+		ChainID:            hdr.ChainID,
+		ParentID:           hdr.ParentID,
+		Height:             hdr.Height,
+		PayloadHash:        hdr.PayloadHash,
+		Timestamp:          uint64(hdr.Timestamp.UnixNano()),
+		View:               hdr.View,
+		ParentVoterIndices: hdr.ParentVoterIndices,
+		ParentVoterSigData: hdr.ParentVoterSigData,
+		ProposerID:         hdr.ProposerID,
+	}
+	return flow.MakeID(dst)
+}
+
 func deriveEventsHash(spork *config.Spork, events []flowEvent) flow.Identifier {
 	switch spork.Version {
 	case 1:
 		return deriveEventsHashV1(events)
-	case 2:
+	case 2, 3:
 		return deriveEventsHashV2(events)
 	}
 	panic("unreachable code")
@@ -199,7 +232,7 @@ func deriveExecutionResult(spork *config.Spork, exec flowExecutionResult) flow.I
 	switch spork.Version {
 	case 1:
 		return deriveExecutionResultV1(exec)
-	case 2:
+	case 2, 3:
 		return deriveExecutionResultV2(exec)
 	}
 	panic("unreachable code")
@@ -267,11 +300,12 @@ func verifyBlockHash(spork *config.Spork, hash []byte, height uint64, hdr *entit
 		Height:             hdr.Height,
 		ParentID:           toFlowIdentifier(hdr.ParentId),
 		ParentVoterIDs:     toIdentifierSlice(hdr.ParentVoterIds),
+		ParentVoterIndices: hdr.ParentVoterIndices,
 		ParentVoterSigData: hdr.ParentVoterSigData,
 		PayloadHash:        toFlowIdentifier(hdr.PayloadHash),
 		ProposerID:         toFlowIdentifier(hdr.ProposerId),
 		ProposerSigData:    hdr.ProposerSigData,
-		Timestamp:          hdr.Timestamp.AsTime(),
+		Timestamp:          hdr.Timestamp.AsTime().UTC(),
 		View:               hdr.View,
 	}
 	blockID := deriveBlockHash(spork, xhdr)
@@ -368,6 +402,7 @@ type flowHeader struct {
 	Height             uint64
 	ParentID           flow.Identifier
 	ParentVoterIDs     []flow.Identifier
+	ParentVoterIndices []byte
 	ParentVoterSigData []byte
 	PayloadHash        flow.Identifier
 	ProposerID         flow.Identifier

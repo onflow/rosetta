@@ -254,6 +254,271 @@ compile a [relic build] by running: `./environ/build-relic.py`. This is covered 
 
 And then use `-tags relic` when building or running `cmd/server`.
 
+## Environment Variables
+
+The Flow Rosetta `cmd/server` supports configuration of certain aspects via the
+following environment variables:
+
+* `JSON_LOGS`
+
+  * Set this to `true` to enable JSON-formatted log output. If this value is not
+    set or set to a `false` value, it will default to "human-readable" log
+    output.
+
+* `OTEL_EXPORTER_OTLP_ENDPOINT`
+
+  * Use this to define a gRPC endpoint, e.g. `http://localhost:4318`, that can
+    be used to export OpenTelemetry traces and metrics using the OpenTelemetry
+    Protocol (OTLP).
+
+  * If this value is not set, all trace and metric data will simply be dropped
+    on the floor.
+
+* `DISABLE_BALANCE_VALIDATION`
+
+  * Set this to `true` to turn off the background balance validation loop. If
+    this value is not set or set to a `false` value, it will default to running
+    the balance validation loop.
+
+  * This should never be turned on in production.
+
+## JSON Config File
+
+The Flow Rosetta `cmd/server` supports the following fields within the JSON
+config file:
+
+* `cache: bool`
+
+  * This can be used to enable the caching of idempotent Access API calls. This
+    should generally be set to `true` in production systems as it makes a
+    massive difference in a node's ability to be synced to tip.
+
+* `construction_access_nodes: []AccessAPIServerConfig`
+
+  * This defines a list of Access API servers that can be used during
+    transaction construction via the Rosetta Construction API.
+
+  * This must have at least one value for the Construction API to work, and the
+    given servers are used to submit transactions and to fetch data relevant for
+    transaction construction, e.g. reference block hash, fee calculations, etc.
+
+* `contracts`
+
+  * This defines the addresses for the key contracts on the specific Flow
+    network, e.g.
+
+```json
+{
+    "flow_cold_storage_proxy": "0000000000000000",
+    "flow_fees": "f919ee77447b7497",
+    "flow_token": "1654653399040a61",
+    "fungible_token": "f233dcee88fe0abe"
+}
+```
+
+  * Note: The addresses do not have a `0x` prefix, and if you do not have the
+    `FlowColdStorageProxy` contract deployed on the particular network, you must
+    use the zero address `"0000000000000000"` to disable support for proxy
+    accounts.
+
+* `data_dir: string`
+
+  * This defines the path to the data directory where the server stores data,
+    e.g. indexdb, cache store, etc.
+
+* `disable_consensus_follower: bool`
+
+  * This can be used to disable the use of Flow's Consensus Follower to validate
+    the block hashes and seals for blocks within live sporks.
+
+* `drop_cache: bool`
+
+  * This can be used to instruct Flow Rosetta to wipe the cache used for storing
+    idempotent Access API calls on startup. This primarily exists as an escape
+    hatch in case any of the existing protection against cache poisoning fails
+    for some reason.
+
+* `mode: "online" | "offline"`
+
+  * This specifies whether the Flow Rosetta should work in online or offline
+    mode. During offline mode, only certain Rosetta API endpoints are
+    functional.
+
+* `network: "mainnet" | "testnet" | "canary"`
+
+  * This defines the specific Flow chain that is being used.
+
+* `originators: []string`
+
+  * This defines the set of root originator addresses. The addresses must be in
+    the standard hex-encoded format that Flow uses, but without the `0x` prefix.
+
+  * All root originator accounts must have been created after the configured
+    `root_block` of the first spork in the `sporks` definition. Otherwise, Flow
+    Rosetta will fail to index balance changes properly.
+
+* `port: uint16`
+
+  * This defines the port for the Flow Rosetta API server to listen on.
+
+* `purge_proxy_accounts: bool`
+
+  * This can be used to delete all proxy accounts from the indexed data on
+    startup. This is useful if you enabled support for proxy accounts at one
+    point, but would later like to remove it.
+
+  * Note: This still leaves behind the `IndexedBlock` data that might contain
+    operations relating to proxy accounts, which are used to generate responses
+    to the `/block` endpoint.
+
+* `resync_from: uint64`
+
+  * This can be used to tell Flow Rosetta to resync from a particular block
+    height on startup. This can be useful in dropping indexed data from any
+    blocks in the previous spork that are no longer part of Flow after a spork
+    upgrade.
+
+* `skip_blocks: []string`
+
+  * This can be used to instruct Flow Rosetta to skip certain data integrity
+    checks when processing any of the given block hashes.
+
+  * Note: The block hashes must be in the standard hex-encoded format that Flow
+    uses, and not use a `0x` prefix.
+
+* `spork_seal_tolerance: uint64`
+
+  * This defines the number of blocks at the end of a spork for which we expect
+    there to be no explicit seals. This is unfortunately required as Flow
+    self-seals the root block of a new spork, and doesn't provide seals for the
+    trailing blocks of the previous spork.
+
+  * This is a security risk as a compromised Access API server could send us
+    malicious event data that we will not be able to identify until after the
+    fact.
+
+* `sporks: map[string]SporkConfig`
+
+  * This defines a mapping of spork IDs to the spork config for the particular
+    set of sporks that we want to index.
+
+  * The ordering of the sporks is automatically inferred from the `root_block`
+    of each spork, so every spork after the "first" spork we define must have a
+    corresponding definition, and the "last" spork is inferred to be the current
+    live spork.
+
+* `workers: uint`
+
+  * This can be used to define the number of prefetch workers to use for warming
+    up the Access API cache. If unspecified, this will default to using twice
+    the number of CPUs available on the system.
+
+The `AccessAPIServerConfig` supports the following fields:
+
+* `address: string`
+
+  * This defines the `host:port` for the Access API gRPC server.
+
+* `public_key: string`
+
+  * This should be set to a hex-encoded public key if the Access API gRPC server
+    is being served over a TLS connection where the server is using a libP2P
+    cert with the given public key.
+
+* `tls: bool`
+
+  * This should be set to `true` if the Access API gRPC server is being served
+    over a TLS connection where the server is using a DNS hostname and the cert
+    has been signed using one of the root Certificate Authorities on the host
+    system.
+
+The `SporkConfig` supports the following fields:
+
+* `access_nodes: []AccessAPIServerConfig`
+
+  * This defines the list of Access API servers that will be used to fetch block
+    data for blocks within a spork.
+
+  * Flow Rosetta will randomly choose one of the given Access API servers for
+    each distinct set of requests.
+
+* `consensus: ConsensusConfig`
+
+  * This defines the config for the Consensus Follower. This must be defined
+    within the config for the current spork unless `disable_consensus_follower`
+    is specified in the top-level configuration.
+
+* `root_block: uint64`
+
+  * This defines the block height of the "root" block within a given spork.
+
+  * For the very "first" spork in `sporks`, this can point to any block within
+    that spork. This is so as to enable spinning up a new Flow Rosetta node
+    without having to sync from the start of a spork.
+
+  * The `root_block` of this "first" spork will be used as the "genesis" block
+    within that Flow Rosetta instance.
+
+  * For all subsequent sporks, the `root_block` must refer to the block height
+    of the actual root block within that spork.
+
+* `version: int`
+
+  * This defines the Flow Rosetta-specific version number that is used to
+    distinguish between the different data types and hashing mechanisms that are
+    used for block data integrity within sporks.
+
+  * As Flow doesn't define a versioning system for breaking changes in its data
+    integrity mechanisms, we define our own. This enables us to support multiple
+    sporks within the same code base and Flow Rosetta process.
+
+The `ConsensusConfig` supports the following fields:
+
+* `disable_signature_check: bool`
+
+  * This can be used to disable the check of the PGP signature of the root
+    protocol state snapshot data.
+
+  * This should never be set in production.
+
+* `root_protocol_state_url: string`
+
+  * This defines the HTTPS URL for the file containing the JSON root protocol
+    state snapshot data for the live spork.
+
+* `root_protocol_state_signature_url: string`
+
+  * This defines the HTTPS URL for the file contained the armored PGP signature
+    of the root protocol state snapshot data.
+
+  * The signature needs to have been made by the key defined as the
+    `signing_key` value.
+
+* `seed_nodes: []SeedNodeConfig`
+
+  * This defines the Access Nodes that should be used to bootstrap the Consensus
+    Follower.
+
+* `signing_key: string`
+
+  * This defines the raw contents of the armored PGP key used to signed the root
+    protocol state snapshot data.
+
+The `SeedNodeConfig` supports the following fields:
+
+* `host: string`
+
+  * This defines the host for the Access Node.
+
+* `port: uint16`
+
+  * This defines the port for the Consensus Follower to use for connecting to
+    the Access Node, usually `3570`.
+
+* `public_key: string`
+
+  * This defines the hex-encoded ECDSA P-256 public key for the Access Node.
+
 ## FlowColdStorageProxy Contract
 
 Transactions in Flow currently expire after 600 blocks — roughly about 10
@@ -804,8 +1069,7 @@ Now make a call to `/construction/combine`:
 * Copy `payloads[0]` from the `/construction/payloads` response, and set it as
   `signatures[0].signing_payload`
 
-* Set the `payer`'s public key in `signatures[0].public_key.hex_bytes`. (Note:
-  to simplify testing we're just using the same public key everywhere.
+* Set the signer address's public key in `signatures[0].public_key.hex_bytes`.
 
 * Copy the hex-encoded signature output from `cmd/sign` output and set it as
   `signatures[0].hex_bytes`

@@ -18,8 +18,7 @@
         "392736e5ff91e45c"
     ],
     "port": 8080,
-    "spork_seal_tolerance": 10000,
-    "spork_synced_tolerance": 10,
+    "spork_seal_tolerance": 600,
     "sporks": {
         "16": {
             "access_nodes": [

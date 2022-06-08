@@ -33,7 +33,6 @@ type Chain struct {
 	ResyncFrom              uint64
 	SkipBlocks              map[flow.Identifier]struct{}
 	SporkSealTolerance      uint64
-	SporkSyncedTolerance    uint64
 	Sporks                  []*Spork
 	UseConsensusFollwer     bool
 	Workers                 uint
@@ -140,7 +139,6 @@ func Init(ctx context.Context, filename string) *Chain {
 	src.parseAndValidateResyncFrom(result)
 	src.parseAndValidateSkipBlocks(result)
 	src.parseAndValidateSporkSealTolerance(result)
-	src.parseAndValidateSporkSyncedTolerance(result)
 	src.parseAndValidateWorkers(result)
 	src.parseAndValidateSporks(ctx, result)
 	src.parseAndValidateDisableConsensusFollower(result)
@@ -170,7 +168,6 @@ type chainConfig struct {
 	ResyncFrom               uint64                `json:"resync_from"`
 	SkipBlocks               []string              `json:"skip_blocks"`
 	SporkSealTolerance       uint64                `json:"spork_seal_tolerance"`
-	SporkSyncedTolerance     uint64                `json:"spork_synced_tolerance"`
 	Sporks                   map[uint]*sporkConfig `json:"sporks"`
 	Workers                  uint                  `json:"workers"`
 }
@@ -309,17 +306,7 @@ func (c *chainConfig) parseAndValidateSkipBlocks(result *Chain) {
 }
 
 func (c *chainConfig) parseAndValidateSporkSealTolerance(result *Chain) {
-	if c.SporkSealTolerance == 0 {
-		log.Fatalf("Missing .spork_seal_tolerance value in %s", c.filename)
-	}
 	result.SporkSealTolerance = c.SporkSealTolerance
-}
-
-func (c *chainConfig) parseAndValidateSporkSyncedTolerance(result *Chain) {
-	if c.SporkSyncedTolerance == 0 {
-		log.Fatalf("Missing .spork_synced_tolerance value in %s", c.filename)
-	}
-	result.SporkSyncedTolerance = c.SporkSyncedTolerance
 }
 
 func (c *chainConfig) parseAndValidateWorkers(result *Chain) {
@@ -367,7 +354,7 @@ func (c *chainConfig) parseAndValidateSporks(ctx context.Context, result *Chain)
 			RootBlock: cfg.RootBlock,
 			Version:   cfg.Version,
 		}
-		if spork.Version < 1 || spork.Version > 2 {
+		if spork.Version < 1 || spork.Version > 3 {
 			log.Fatalf(
 				"Invalid .version value for %s-%d in %s",
 				c.Network, id, c.filename,
