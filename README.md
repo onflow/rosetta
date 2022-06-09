@@ -287,6 +287,13 @@ following environment variables:
 The Flow Rosetta `cmd/server` supports the following fields within the JSON
 config file:
 
+* `balance_validation_interval: string`
+
+  * The interval between every account check within the balance validation loop.
+    This accepts [time.Duration values](https://pkg.go.dev/time#ParseDuration)
+    like `"1s"`, `"10ms"`, etc. If no value has been set, this will default to 1
+    second.
+
 * `cache: bool`
 
   * This can be used to enable the caching of idempotent Access API calls. This

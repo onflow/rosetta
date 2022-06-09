@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"sort"
 	"strconv"
+	"time"
 
 	"github.com/onflow/flow-go/model/flow"
 	"github.com/onflow/rosetta/access"
@@ -20,22 +21,23 @@ import (
 
 // Chain represents the definition of a Flow chain like mainnet and testnet.
 type Chain struct {
-	Cache                   bool
-	ConstructionAccessNodes access.Pool
-	DataAccessNodes         access.Pool
-	Contracts               *Contracts
-	DataDir                 string
-	Mode                    string
-	Network                 string
-	Originators             []string
-	Port                    uint16
-	PurgeProxyAccounts      bool
-	ResyncFrom              uint64
-	SkipBlocks              map[flow.Identifier]struct{}
-	SporkSealTolerance      uint64
-	Sporks                  []*Spork
-	UseConsensusFollwer     bool
-	Workers                 uint
+	BalanceValidationInterval time.Duration
+	Cache                     bool
+	ConstructionAccessNodes   access.Pool
+	DataAccessNodes           access.Pool
+	Contracts                 *Contracts
+	DataDir                   string
+	Mode                      string
+	Network                   string
+	Originators               []string
+	Port                      uint16
+	PurgeProxyAccounts        bool
+	ResyncFrom                uint64
+	SkipBlocks                map[flow.Identifier]struct{}
+	SporkSealTolerance        uint64
+	Sporks                    []*Spork
+	UseConsensusFollwer       bool
+	Workers                   uint
 }
 
 // IsProxyContractDeployed returns whether a deployed Proxy contract has been
@@ -133,6 +135,7 @@ func Init(ctx context.Context, filename string) *Chain {
 
 	result.Cache = src.Cache
 	result.PurgeProxyAccounts = src.PurgeProxyAccounts
+	src.parseAndValidateBalanceValidationInterval(result)
 	src.parseAndValidateDataDir(result)
 	src.parseAndValidateOriginators(result)
 	src.parseAndValidateConstructionAccessNodes(ctx, result)
@@ -153,23 +156,24 @@ type sporkConfig struct {
 }
 
 type chainConfig struct {
-	filename                 string
-	Cache                    bool                  `json:"cache"`
-	ConstructionAccessNodes  []access.NodeConfig   `json:"construction_access_nodes"`
-	Contracts                *Contracts            `json:"contracts"`
-	DataDir                  string                `json:"data_dir"`
-	DisableConsensusFollower bool                  `json:"disable_consensus_follower"`
-	DropCache                bool                  `json:"drop_cache"`
-	Mode                     string                `json:"mode"`
-	Network                  string                `json:"network"`
-	Originators              []string              `json:"originators"`
-	Port                     uint16                `json:"port"`
-	PurgeProxyAccounts       bool                  `json:"purge_proxy_accounts"`
-	ResyncFrom               uint64                `json:"resync_from"`
-	SkipBlocks               []string              `json:"skip_blocks"`
-	SporkSealTolerance       uint64                `json:"spork_seal_tolerance"`
-	Sporks                   map[uint]*sporkConfig `json:"sporks"`
-	Workers                  uint                  `json:"workers"`
+	filename                  string
+	BalanceValidationInterval string                `json:"balance_validation_interval"`
+	Cache                     bool                  `json:"cache"`
+	ConstructionAccessNodes   []access.NodeConfig   `json:"construction_access_nodes"`
+	Contracts                 *Contracts            `json:"contracts"`
+	DataDir                   string                `json:"data_dir"`
+	DisableConsensusFollower  bool                  `json:"disable_consensus_follower"`
+	DropCache                 bool                  `json:"drop_cache"`
+	Mode                      string                `json:"mode"`
+	Network                   string                `json:"network"`
+	Originators               []string              `json:"originators"`
+	Port                      uint16                `json:"port"`
+	PurgeProxyAccounts        bool                  `json:"purge_proxy_accounts"`
+	ResyncFrom                uint64                `json:"resync_from"`
+	SkipBlocks                []string              `json:"skip_blocks"`
+	SporkSealTolerance        uint64                `json:"spork_seal_tolerance"`
+	Sporks                    map[uint]*sporkConfig `json:"sporks"`
+	Workers                   uint                  `json:"workers"`
 }
 
 func (c *chainConfig) readConfigJSON(filename string) {
@@ -243,6 +247,21 @@ func (c *chainConfig) parseAndValidateContracts(result *Chain) {
 		log.Fatalf("Missing .contracts.fungible_token value in %s", c.filename)
 	}
 	result.Contracts = c.Contracts
+}
+
+func (c *chainConfig) parseAndValidateBalanceValidationInterval(result *Chain) {
+	if c.BalanceValidationInterval == "" {
+		result.BalanceValidationInterval = time.Second
+		return
+	}
+	d, err := time.ParseDuration(c.BalanceValidationInterval)
+	if err != nil {
+		log.Fatalf(
+			"Failed to parse .balance_validation_interval value in %s: %s",
+			c.filename, err,
+		)
+	}
+	result.BalanceValidationInterval = d
 }
 
 func (c *chainConfig) parseAndValidateDataDir(result *Chain) {
