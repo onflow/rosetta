@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/btcsuite/btcd/btcec"
+	"github.com/btcsuite/btcd/btcec/v2"
 )
 
 func main() {
-	priv, err := btcec.NewPrivateKey(btcec.S256())
+	priv, err := btcec.NewPrivateKey()
 	if err != nil {
 		log.Fatalf("Failed to generate key: %s", err)
 	}

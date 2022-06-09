@@ -5,14 +5,14 @@ package crypto
 import (
 	"fmt"
 
-	"github.com/btcsuite/btcd/btcec"
+	"github.com/btcsuite/btcd/btcec/v2"
 )
 
 // ConvertFlowPublicKey re-encodes a secp256k1 public key from the format used
 // by Flow to the SEC compressed format.
 func ConvertFlowPublicKey(key []byte) ([]byte, error) {
 	raw := append([]byte{4}, key...)
-	pub, err := btcec.ParsePubKey(raw, btcec.S256())
+	pub, err := btcec.ParsePubKey(raw)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"unable to decode Flow public key %x: %s",
@@ -25,7 +25,7 @@ func ConvertFlowPublicKey(key []byte) ([]byte, error) {
 // ConvertRosettaPublicKey re-encodes a SEC compressed secp256k1 public key to
 // the format expected by Flow.
 func ConvertRosettaPublicKey(key []byte) ([]byte, error) {
-	pub, err := btcec.ParsePubKey(key, btcec.S256())
+	pub, err := btcec.ParsePubKey(key)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"unable to decode Rosetta public key %x: %s",

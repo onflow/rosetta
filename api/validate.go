@@ -112,13 +112,15 @@ func (s *Server) validateBalances(ctx context.Context) {
 						done, len(accts), failed,
 					)
 				} else {
-					log.Infof(
+					// NOTE(tav): We use WARN-level logs in order to avoid being
+					// sampled by certain logging infrastructure.
+					log.Warnf(
 						"Checked account balances for %d of %d accounts",
 						done, len(accts),
 					)
 				}
 			}
-			time.Sleep(time.Second)
+			time.Sleep(s.Chain.BalanceValidationInterval)
 		}
 		if len(accts) > 0 {
 			if failed > 0 {
@@ -127,7 +129,9 @@ func (s *Server) validateBalances(ctx context.Context) {
 					len(accts), failed,
 				)
 			} else {
-				log.Infof(
+				// NOTE(tav): We use WARN-level logs in order to avoid being
+				// sampled by certain logging infrastructure.
+				log.Warnf(
 					"Checked all account balances: %d accounts",
 					len(accts),
 				)
