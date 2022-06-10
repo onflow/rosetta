@@ -2,6 +2,6 @@
 package version
 
 const (
-	Flow        = "0.26.3"
-	FlowRosetta = "0.4.19"
+	Flow        = "0.26.6"
+	FlowRosetta = "0.4.20"
 )

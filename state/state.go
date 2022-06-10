@@ -435,7 +435,7 @@ func (i *Indexer) indexLiveSpork(rctx context.Context, spork *config.Spork, last
 					blockID := flow.Identifier{}
 					copy(blockID[:], seal.BlockId)
 					sealID := flow.Identifier{}
-					err := i.consensus.View(operation.LookupBlockSeal(blockID, &sealID))
+					err := i.consensus.View(operation.LookupBySealedBlockID(blockID, &sealID))
 					if err != nil {
 						log.Errorf(
 							"Failed to get seal ID for block %x from consensus: %s",
