@@ -8,6 +8,7 @@ require (
 	github.com/coinbase/rosetta-sdk-go v0.7.0
 	github.com/dgraph-io/badger/v2 v2.2007.4
 	github.com/dgraph-io/badger/v3 v3.2103.2
+	github.com/docker/distribution v2.8.1+incompatible // indirect
 	github.com/docker/docker v20.10.17+incompatible // indirect
 	github.com/ethereum/go-ethereum v1.10.18
 	github.com/golang/protobuf v1.5.2
@@ -15,7 +16,7 @@ require (
 	github.com/libp2p/go-libp2p-tls v0.4.1
 	github.com/moby/term v0.0.0-20210619224110-3f7ff695adc6 // indirect
 	github.com/onflow/cadence v0.24.0
-	github.com/onflow/flow-go v0.26.3
+	github.com/onflow/flow-go v0.26.6
 	github.com/onflow/flow-go/crypto v0.24.3
 	github.com/onflow/flow/protobuf/go/flow v0.3.1
 	github.com/opencontainers/image-spec v1.0.2 // indirect
