@@ -32,6 +32,7 @@ func (i *Indexer) processBlock(rctx context.Context, spork *config.Spork, height
 	ctx := rctx
 	_, skip := i.Chain.SkipBlocks[blockID]
 	initial := true
+	logOps := false
 	skipCache := false
 	skipCacheWarned := false
 	slowPath := false
@@ -349,6 +350,7 @@ outer:
 						"No sealed result found for block %x at height %d (within spork seal tolerance)",
 						hash, height,
 					)
+					logOps = true
 				} else {
 					log.Fatalf(
 						"No sealed result found for block %x at height %d",
@@ -901,10 +903,13 @@ outer:
 				}
 			}
 		}
-		if debug {
+		if debug || logOps {
 			for _, txn := range data.Transactions {
 				for _, op := range txn.Operations {
-					log.Infof("Indexing op: %s", op)
+					log.Warnf(
+						"Indexing op in transaction %x within block %x at height %d: %s",
+						txn.Hash, hash, height, op,
+					)
 				}
 			}
 		}
