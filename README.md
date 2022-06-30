@@ -345,6 +345,13 @@ config file:
     hatch in case any of the existing protection against cache poisoning fails
     for some reason.
 
+* `max_backoff_interval: string`
+
+  * When encountering certain API errors, we exponentially back off from two
+    seconds up to the given max backoff interval. This accepts [time.Duration
+    values](https://pkg.go.dev/time#ParseDuration) like `"1s"`, `"30s"`, etc. If
+    no value has been set, this will default to 10 seconds.
+
 * `mode: "online" | "offline"`
 
   * This specifies whether the Flow Rosetta should work in online or offline

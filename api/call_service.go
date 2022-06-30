@@ -10,6 +10,7 @@ import (
 	"github.com/onflow/cadence"
 	"github.com/onflow/flow-go/model/flow"
 	"github.com/onflow/rosetta/crypto"
+	"github.com/onflow/rosetta/log"
 )
 
 // Call implements the /call endpoint.
@@ -19,6 +20,8 @@ func (s *Server) Call(ctx context.Context, r *types.CallRequest) (*types.CallRes
 		return s.accountBalances(ctx, r.Parameters)
 	case callAccountPublicKeys:
 		return s.accountPublicKeys(ctx, r.Parameters)
+	case callBalanceValidationStatus:
+		return s.balanceValidationStatus(ctx)
 	case callEcho:
 		return s.echo(r.Parameters)
 	case callLatestBlock:
@@ -168,6 +171,43 @@ func (s *Server) accountPublicKeys(ctx context.Context, params map[string]interf
 			"keys": keys,
 		},
 	}, nil
+}
+
+func (s *Server) balanceValidationStatus(ctx context.Context) (*types.CallResponse, *types.Error) {
+	v := s.getValidationStatus()
+	switch v.status {
+	case "failure":
+		return &types.CallResponse{
+			Result: map[string]interface{}{
+				"error":  v.err,
+				"status": v.status,
+			},
+		}, nil
+	case "in_progress":
+		return &types.CallResponse{
+			Result: map[string]interface{}{
+				"accounts": v.accounts,
+				"checked":  v.checked,
+				"status":   v.status,
+			},
+		}, nil
+	case "not_started":
+		return &types.CallResponse{
+			Result: map[string]interface{}{
+				"status": v.status,
+			},
+		}, nil
+	case "success":
+		return &types.CallResponse{
+			Result: map[string]interface{}{
+				"accounts": v.accounts,
+				"status":   v.status,
+			},
+		}, nil
+	default:
+		log.Fatalf("Unsupported validation status %q", v.status)
+		panic("unreachable code")
+	}
 }
 
 func (s *Server) echo(params map[string]interface{}) (*types.CallResponse, *types.Error) {

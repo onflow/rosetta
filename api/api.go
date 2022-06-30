@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
-	"os"
 	"sync"
 	"time"
 
@@ -24,28 +23,30 @@ import (
 )
 
 const (
-	callAccountBalances   = "account_balances"
-	callAccountPublicKeys = "account_public_keys"
-	callEcho              = "echo"
-	callLatestBlock       = "latest_block"
-	callListAccounts      = "list_accounts"
-	callVerifyAddress     = "verify_address"
-	opCreateAccount       = "create_account"
-	opCreateProxyAccount  = "create_proxy_account"
-	opDeployContract      = "deploy_contract"
-	opFee                 = "fee"
-	opProxyTransfer       = "proxy_transfer"
-	opProxyTransferInner  = "proxy_transfer_inner"
-	opTransfer            = "transfer"
-	opUpdateContract      = "update_contract"
-	statusFailed          = "FAILED"
-	statusSuccess         = "SUCCESS"
+	callAccountBalances         = "account_balances"
+	callAccountPublicKeys       = "account_public_keys"
+	callBalanceValidationStatus = "balance_validation_status"
+	callEcho                    = "echo"
+	callLatestBlock             = "latest_block"
+	callListAccounts            = "list_accounts"
+	callVerifyAddress           = "verify_address"
+	opCreateAccount             = "create_account"
+	opCreateProxyAccount        = "create_proxy_account"
+	opDeployContract            = "deploy_contract"
+	opFee                       = "fee"
+	opProxyTransfer             = "proxy_transfer"
+	opProxyTransferInner        = "proxy_transfer_inner"
+	opTransfer                  = "transfer"
+	opUpdateContract            = "update_contract"
+	statusFailed                = "FAILED"
+	statusSuccess               = "SUCCESS"
 )
 
 var (
 	callMethods = []string{
 		callAccountBalances,
 		callAccountPublicKeys,
+		callBalanceValidationStatus,
 		callEcho,
 		callLatestBlock,
 		callListAccounts,
@@ -93,15 +94,17 @@ type Server struct {
 	scriptGetProxyPublicKey  []byte
 	scriptProxyTransfer      []byte
 	scriptUpdateContract     []byte
+	validation               *validation
+	validationMu             sync.RWMutex // protects validation
 }
 
 // Run initializes the server and starts serving Rosetta API calls.
 func (s *Server) Run(ctx context.Context) {
 	s.compileScripts()
-	switch os.Getenv("DISABLE_BALANCE_VALIDATION") {
-	case "false", "off", "0", "":
-		go s.validateBalances(ctx)
+	s.validation = &validation{
+		status: "not_started",
 	}
+	go s.validateBalances(ctx)
 	feeAddr, err := hex.DecodeString(s.Chain.Contracts.FlowFees)
 	if err != nil {
 		log.Fatalf(
@@ -197,6 +200,12 @@ func (s *Server) getIndexedStateErr() *types.Error {
 	return xerr
 }
 
+func (s *Server) getValidationStatus() *validation {
+	s.validationMu.RLock()
+	defer s.validationMu.RUnlock()
+	return s.validation
+}
+
 func (s *Server) setIndexedStateErr(format string, a ...interface{}) {
 	msg := fmt.Sprintf(format, a...)
 	log.Errorf(msg)
@@ -207,6 +216,40 @@ func (s *Server) setIndexedStateErr(format string, a ...interface{}) {
 		s.indexedStateErr = xerr
 	}
 	s.mu.Unlock()
+	s.validationMu.Lock()
+	defer s.validationMu.Unlock()
+	if s.validation.status == "failure" {
+		return
+	}
+	s.validation = &validation{
+		err:    msg,
+		status: "failure",
+	}
+}
+
+func (s *Server) setValidationProgress(accounts int, checked int) {
+	s.validationMu.Lock()
+	defer s.validationMu.Unlock()
+	if s.validation.status == "failure" || s.validation.status == "success" {
+		return
+	}
+	s.validation = &validation{
+		accounts: accounts,
+		checked:  checked,
+		status:   "in_progress",
+	}
+}
+
+func (s *Server) setValidationSuccess(accounts int) {
+	s.validationMu.Lock()
+	defer s.validationMu.Unlock()
+	if s.validation.status == "failure" {
+		return
+	}
+	s.validation = &validation{
+		accounts: accounts,
+		status:   "success",
+	}
 }
 
 type accountKey struct {
@@ -249,4 +292,11 @@ type txnIntent struct {
 	proxy          bool
 	receiver       []byte
 	sender         []byte
+}
+
+type validation struct {
+	accounts int
+	checked  int
+	err      string
+	status   string
 }

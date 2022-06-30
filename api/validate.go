@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"os"
 	"time"
 
 	"github.com/onflow/rosetta/log"
@@ -12,6 +13,12 @@ import (
 // Access API servers, which may not necessarily be true.
 func (s *Server) validateBalances(ctx context.Context) {
 	if s.Offline {
+		return
+	}
+	switch os.Getenv("DISABLE_BALANCE_VALIDATION") {
+	case "false", "off", "0", "":
+		// Continue on false-y values.
+	default:
 		return
 	}
 	log.Infof("Running background loop to validate account balances")
@@ -105,6 +112,9 @@ func (s *Server) validateBalances(ctx context.Context) {
 				break
 			}
 			done++
+			if failed == 0 {
+				s.setValidationProgress(len(accts), done)
+			}
 			if done%1000 == 0 {
 				if failed > 0 {
 					log.Errorf(
@@ -135,6 +145,7 @@ func (s *Server) validateBalances(ctx context.Context) {
 					"Checked all account balances: %d accounts",
 					len(accts),
 				)
+				s.setValidationSuccess(len(accts))
 			}
 		}
 		time.Sleep(time.Minute)
