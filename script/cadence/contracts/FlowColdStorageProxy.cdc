@@ -1,5 +1,5 @@
-import FlowToken from 0x7e60df042a9c0868
-import FungibleToken from 0x9a0766d93b6608b7
+import FlowToken from 0x0ae53cb6e3f42a79
+import FungibleToken from 0xee82856bf20e2aa6
 
 // FlowColdStorageProxy provides support for the transfer of FLOW tokens within
 // cold storage transactions.
@@ -139,7 +139,7 @@ pub contract FlowColdStorageProxy {
     //
     // And, finally, the FlowColdStorageProxy.Vault itself is made directly
     // accessible via /public/flowColdStorageProxyVault.
-    pub fun setup(payer: AuthAccount, publicKey: [UInt8]) {
+    pub fun setup(payer: AuthAccount, publicKey: [UInt8]): Address {
         let acct = AuthAccount(payer: payer)
         acct.save(<- create Vault(publicKey: publicKey), to: self.VaultCapabilityStoragePath)
         acct.unlink(/public/flowTokenReceiver)
@@ -147,6 +147,7 @@ pub contract FlowColdStorageProxy {
 		acct.link<&{FungibleToken.Receiver}>(/public/flowTokenReceiver, target: self.VaultCapabilityStoragePath)!
 		acct.link<&Vault>(self.VaultCapabilityPublicPath, target: self.VaultCapabilityStoragePath)!
         emit Created(account: acct.address, publicKey: String.encodeHex(publicKey))
+        return acct.address
     }
 
     init() {
