@@ -7,6 +7,8 @@ import (
 	"github.com/onflow/rosetta/cache"
 	"github.com/onflow/rosetta/log"
 	"github.com/onflow/rosetta/trace"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 var (
@@ -26,7 +28,7 @@ func (i *Indexer) runWorker(rctx context.Context, id int) {
 			)
 			workerBlockHeight.Observe(rctx, int64(height))
 			attempt := 0
-			backoff := time.Duration(0)
+			backoff := time.Second
 			slowPath := false
 			spork := i.Chain.SporkFor(height)
 		retry:
@@ -46,14 +48,6 @@ func (i *Indexer) runWorker(rctx context.Context, id int) {
 				default:
 				}
 				if attempt > 0 {
-					if attempt == 1 {
-						backoff = 100 * time.Millisecond
-					} else {
-						backoff *= 2
-						if backoff > time.Second {
-							backoff = time.Second
-						}
-					}
 					time.Sleep(backoff)
 				}
 				attempt++
@@ -82,6 +76,9 @@ func (i *Indexer) runWorker(rctx context.Context, id int) {
 							span.SetAttributes(trace.Bool("slow_path", true))
 						} else {
 							lastErr = err
+							if status.Code(err) == codes.NotFound {
+								backoff = i.nextBackoff(backoff)
+							}
 							continue
 						}
 					}
@@ -94,6 +91,9 @@ func (i *Indexer) runWorker(rctx context.Context, id int) {
 							span.SetAttributes(trace.Bool("slow_path", true))
 						} else {
 							lastErr = err
+							if status.Code(err) == codes.NotFound {
+								backoff = i.nextBackoff(backoff)
+							}
 							continue
 						}
 					}
@@ -140,6 +140,9 @@ func (i *Indexer) runWorker(rctx context.Context, id int) {
 				_, err = client.ExecutionResultForBlockID(ctx, block.Id)
 				if err != nil {
 					lastErr = err
+					if status.Code(err) == codes.NotFound {
+						backoff = i.nextBackoff(backoff)
+					}
 					continue
 				}
 				lastErr = nil

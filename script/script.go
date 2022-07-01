@@ -97,6 +97,32 @@ const DeployContract = `transaction(contractName: String, contractCode: String) 
 }
 `
 
+// DeployContractAccount defines the template for deploying the given contract
+// on an account, while also updating the account's signing key.
+const DeployContractAccount = `transaction(contractName: String, contractCode: String, prevKeyIndex: Int, newKey: String, newKeyHash: String) {
+    prepare(payer: AuthAccount) {
+        let hash = HashAlgorithm.SHA3_256.hash(newKey.decodeHex())
+        if hash != newKeyHash {
+            panic("Mismatching hash for new signing key")
+        }
+        payer.contracts.add(
+            name: contractName,
+            code: contractCode.decodeHex()
+        )
+        let publicKey = PublicKey(
+            publicKey: newKey.decodeHex(),
+            signatureAlgorithm: SignatureAlgorithm.ECDSA_secp256k1
+        )
+        acct.keys.add(
+            publicKey: publicKey,
+            hashAlgorithm: HashAlgorithm.SHA3_256,
+            weight: 1000.0
+        )
+        payer.keys.revoke(keyIndex: prevKeyIndex)
+    }
+}
+`
+
 // GetBalances defines the template for the read-only transaction script that
 // returns an account's balances.
 //
@@ -226,6 +252,32 @@ const UpdateContract = `transaction(contractName: String, contractCode: String) 
             name: contractName,
             code: contractCode.decodeHex()
         )
+    }
+}
+`
+
+// UpdateContractAccount updates an existing contract on an account, while also
+// updating the account's signing key.
+const UpdateContractAccount = `transaction(contractName: String, contractCode: String, prevKeyIndex: Int, newKey: String, newKeyHash: String) {
+    prepare(payer: AuthAccount) {
+        let hash = HashAlgorithm.SHA3_256.hash(newKey.decodeHex())
+        if hash != newKeyHash {
+            panic("Mismatching hash for new signing key")
+        }
+        payer.contracts.update__experimental(
+            name: contractName,
+            code: contractCode.decodeHex()
+        )
+        let publicKey = PublicKey(
+            publicKey: newKey.decodeHex(),
+            signatureAlgorithm: SignatureAlgorithm.ECDSA_secp256k1
+        )
+        acct.keys.add(
+            publicKey: publicKey,
+            hashAlgorithm: HashAlgorithm.SHA3_256,
+            weight: 1000.0
+        )
+        payer.keys.revoke(keyIndex: prevKeyIndex)
     }
 }
 `

@@ -27,6 +27,7 @@ type Chain struct {
 	DataAccessNodes           access.Pool
 	Contracts                 *Contracts
 	DataDir                   string
+	MaxBackoffInterval        time.Duration
 	Mode                      string
 	Network                   string
 	Originators               []string
@@ -137,6 +138,7 @@ func Init(ctx context.Context, filename string) *Chain {
 	result.PurgeProxyAccounts = src.PurgeProxyAccounts
 	src.parseAndValidateBalanceValidationInterval(result)
 	src.parseAndValidateDataDir(result)
+	src.parseAndValidateMaxBackoffInterval(result)
 	src.parseAndValidateOriginators(result)
 	src.parseAndValidateConstructionAccessNodes(ctx, result)
 	src.parseAndValidateResyncFrom(result)
@@ -164,6 +166,7 @@ type chainConfig struct {
 	DataDir                   string                `json:"data_dir"`
 	DisableConsensusFollower  bool                  `json:"disable_consensus_follower"`
 	DropCache                 bool                  `json:"drop_cache"`
+	MaxBackoffInterval        string                `json:"max_backoff_interval"`
 	Mode                      string                `json:"mode"`
 	Network                   string                `json:"network"`
 	Originators               []string              `json:"originators"`
@@ -282,6 +285,21 @@ func (c *chainConfig) parseAndValidateDataDir(result *Chain) {
 	if err := os.MkdirAll(c.DataDir, 0o744); err != nil {
 		log.Fatalf("Failed to create %q: %s", c.DataDir, err)
 	}
+}
+
+func (c *chainConfig) parseAndValidateMaxBackoffInterval(result *Chain) {
+	if c.MaxBackoffInterval == "" {
+		result.MaxBackoffInterval = 10 * time.Second
+		return
+	}
+	d, err := time.ParseDuration(c.MaxBackoffInterval)
+	if err != nil {
+		log.Fatalf(
+			"Failed to parse .max_backoff_interval value in %s: %s",
+			c.filename, err,
+		)
+	}
+	result.MaxBackoffInterval = d
 }
 
 func (c *chainConfig) parseAndValidateOriginators(result *Chain) {

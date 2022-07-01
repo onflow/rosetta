@@ -4,6 +4,7 @@ package model
 import (
 	"bytes"
 	"fmt"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/onflow/flow/protobuf/go/flow/entities"
@@ -28,6 +29,31 @@ func (b *BlockMeta) Equal(other *BlockMeta) bool {
 	}
 	return bytes.Equal(b.Hash, other.Hash) &&
 		b.Height == other.Height && b.Timestamp == other.Timestamp
+}
+
+// Pretty generates a custom-formatted representation of an operation.
+func (o *Operation) Pretty() string {
+	w := &strings.Builder{}
+	w.WriteByte('{')
+	if len(o.Account) == 0 {
+		w.WriteString("account: nil, ")
+	} else {
+		fmt.Fprintf(w, `account: "0x%x", `, o.Account)
+	}
+	fmt.Fprintf(w, "amount: %v, ", o.Amount)
+	if len(o.ProxyPublicKey) == 0 {
+		w.WriteString("proxy_public_key: nil, ")
+	} else {
+		fmt.Fprintf(w, `proxy_public_key: "%x", `, o.ProxyPublicKey)
+	}
+	if len(o.Receiver) == 0 {
+		w.WriteString("receiver: nil, ")
+	} else {
+		fmt.Fprintf(w, `receiver: "0x%x", `, o.Receiver)
+	}
+	fmt.Fprintf(w, `type: "%s"`, o.Type)
+	w.WriteByte('}')
+	return w.String()
 }
 
 // NOTE(tav): The ordering of the fields matter for the following data types, as

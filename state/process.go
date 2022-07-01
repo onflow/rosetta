@@ -28,14 +28,15 @@ var (
 func (i *Indexer) processBlock(rctx context.Context, spork *config.Spork, height uint64, hash []byte) {
 	// TODO(tav): Confirm that failed transactions do not emit invalid events.
 	indexerBlockHeight.Observe(rctx, int64(height))
+	backoff := time.Second
 	blockID := toFlowIdentifier(hash)
 	ctx := rctx
 	_, skip := i.Chain.SkipBlocks[blockID]
 	initial := true
-	logOps := false
 	skipCache := false
 	skipCacheWarned := false
 	slowPath := false
+	unsealed := false
 	var span trace.Span
 outer:
 	for {
@@ -50,7 +51,7 @@ outer:
 		if initial {
 			initial = false
 		} else {
-			time.Sleep(time.Second)
+			time.Sleep(backoff)
 		}
 		if skipCache {
 			ctx = cache.Skip(rctx)
@@ -90,6 +91,9 @@ outer:
 					slowPath = true
 					span.SetAttributes(trace.Bool("slow_path", true))
 				} else {
+					if status.Code(err) == codes.NotFound {
+						backoff = i.nextBackoff(backoff)
+					}
 					continue
 				}
 			}
@@ -262,6 +266,7 @@ outer:
 			}
 		}
 		var execResult *entities.ExecutionResult
+		execBackoff := time.Second
 		for {
 			select {
 			case <-ctx.Done():
@@ -277,7 +282,10 @@ outer:
 				"Failed to fetch execution result for block %x at height %d: %s",
 				hash, height, err,
 			)
-			time.Sleep(time.Second)
+			if status.Code(err) == codes.NotFound {
+				execBackoff = i.nextBackoff(execBackoff)
+			}
+			time.Sleep(execBackoff)
 		}
 		if skip {
 			log.Warnf(
@@ -350,7 +358,7 @@ outer:
 						"No sealed result found for block %x at height %d (within spork seal tolerance)",
 						hash, height,
 					)
-					logOps = true
+					unsealed = true
 				} else {
 					log.Fatalf(
 						"No sealed result found for block %x at height %d",
@@ -903,12 +911,18 @@ outer:
 				}
 			}
 		}
-		if debug || logOps {
+		if debug || skip || unsealed {
+			typ := ""
+			if skip {
+				typ = "skipped "
+			} else if unsealed {
+				typ = "unsealed "
+			}
 			for _, txn := range data.Transactions {
 				for _, op := range txn.Operations {
 					log.Warnf(
-						"Indexing op in transaction %x within block %x at height %d: %s",
-						txn.Hash, hash, height, op,
+						"Indexing op in transaction %x within %sblock %x at height %d: %s",
+						txn.Hash, typ, hash, height, op.Pretty(),
 					)
 				}
 			}

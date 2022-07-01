@@ -21,6 +21,9 @@ import (
 	flowcrypto "github.com/onflow/flow-go/crypto"
 	"github.com/onflow/flow-go/follower"
 	"github.com/onflow/flow-go/model/flow"
+	"github.com/onflow/flow-go/module/compliance"
+	"github.com/onflow/flow-go/module/synchronization"
+	"github.com/onflow/flow-go/storage"
 	"github.com/onflow/flow-go/storage/badger/operation"
 	"github.com/onflow/rosetta/cache"
 	"github.com/onflow/rosetta/config"
@@ -51,9 +54,6 @@ type Indexer struct {
 	accts               map[string]bool
 	consensus           *badger.DB
 	feeAddr             []byte
-	finalizedBlock      flow.Identifier
-	finalizedMu         sync.Mutex // protects finalizedBlock and finalizedSet
-	finalizedSet        bool
 	jobs                chan uint64
 	lastIndexed         *model.BlockMeta
 	liveRoot            *model.BlockMeta
@@ -319,6 +319,7 @@ func (i *Indexer) indexLiveSpork(rctx context.Context, spork *config.Spork, last
 		parent = i.liveRoot.Hash
 	}
 	for {
+		backoff := time.Second
 		initial := true
 		skipCache := false
 		skipCacheWarned := false
@@ -332,7 +333,7 @@ func (i *Indexer) indexLiveSpork(rctx context.Context, spork *config.Spork, last
 			if initial {
 				initial = false
 			} else {
-				time.Sleep(time.Second)
+				time.Sleep(backoff)
 			}
 			if skipCache {
 				ctx = cache.Skip(rctx)
@@ -345,15 +346,6 @@ func (i *Indexer) indexLiveSpork(rctx context.Context, spork *config.Spork, last
 				}
 			} else {
 				ctx = rctx
-			}
-			if useConsensus {
-				i.finalizedMu.Lock()
-				if !i.finalizedSet {
-					i.finalizedMu.Unlock()
-					continue
-				}
-				i.finalizedSet = false
-				i.finalizedMu.Unlock()
 			}
 			client := spork.AccessNodes.Client()
 			hdr, err := client.BlockHeaderByHeight(ctx, height)
@@ -404,6 +396,9 @@ func (i *Indexer) indexLiveSpork(rctx context.Context, spork *config.Spork, last
 						"Failed to get block ID for height %d from consensus: %s",
 						height, err,
 					)
+					if err == storage.ErrNotFound {
+						backoff = i.nextBackoff(backoff)
+					}
 					continue
 				}
 				if !bytes.Equal(blockID[:], block.Id) {
@@ -623,15 +618,19 @@ func (i *Indexer) lastIndexedHeight() uint64 {
 	return i.lastIndexed.Height
 }
 
+func (i *Indexer) nextBackoff(d time.Duration) time.Duration {
+	d *= 2
+	if d > i.Chain.MaxBackoffInterval {
+		d = i.Chain.MaxBackoffInterval
+	}
+	return d
+}
+
 func (i *Indexer) onBlockFinalized(f *hotstuff.Block) {
 	log.Infof(
 		"Got finalized block via consensus follower: %x (block timestamp: %s)",
 		f.BlockID[:], f.Timestamp.Format(time.RFC3339),
 	)
-	i.finalizedMu.Lock()
-	i.finalizedBlock = f.BlockID
-	i.finalizedSet = true
-	i.finalizedMu.Unlock()
 }
 
 func (i *Indexer) runConsensusFollower(ctx context.Context) {
@@ -678,15 +677,18 @@ func (i *Indexer) runConsensusFollower(ctx context.Context) {
 		follower.WithBootstrapDir(sporkDir),
 		follower.WithDB(db),
 		follower.WithLogLevel("info"),
-		// NOTE(siva): Enable sync config once it has been merged upstream.
-		// follower.WithSyncCoreConfig(&synchronization.Config{
-		// 	MaxAttempts:   5,
-		// 	MaxRequests:   5,
-		// 	MaxSize:       64,
-		// 	RetryInterval: 4 * time.Second,
-		// 	Tolerance:     10,
-		// }),
+		follower.WithSyncCoreConfig(&synchronization.Config{
+			MaxAttempts:   5,
+			MaxRequests:   5,
+			MaxSize:       64,
+			RetryInterval: 4 * time.Second,
+			Tolerance:     10,
+		}),
 	)
+	// TODO(tav): Specify the cache limit for new proposals once the Consensus
+	// Follower can be configured with it.
+	//
+	compliance.WithSkipNewProposalsThreshold(compliance.MinSkipNewProposalsThreshold)
 	if err != nil {
 		log.Fatalf("Failed to create the consensus follower: %s", err)
 	}
@@ -722,7 +724,7 @@ func (i *Indexer) scheduleJobs(ctx context.Context, startHeight uint64) {
 		for height := startHeight + 1; height <= block.Height; height++ {
 			i.jobs <- height
 			if height%200 == 0 {
-				log.Infof("Added job to prefetch block %d", height)
+				log.Warnf("Added job to prefetch block %d", height)
 			}
 		}
 		startHeight = block.Height
