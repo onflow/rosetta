@@ -73,6 +73,8 @@ pub contract FlowColdStorageProxy {
             return self.publicKey
         }
 
+        // LEAVE THIS COMMENT AS IS. IT IS USED BY THE AUTOMATED TESTS.
+
         // transfer acts as a meta transaction to transfer FLOW from the
         // underlying FlowToken.Vault to a receiver.
         //

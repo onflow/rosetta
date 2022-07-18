@@ -16,16 +16,18 @@ const {
 
 const crypto = require("crypto");
 const secp256k1 = require('secp256k1');
+const fs = require("fs");
 
 jest.setTimeout(10000);
 
 const publicKey = "ae89c798171980471c0648957ceaf305d3251d7e5c12d3eea3393512680876d2db8cc59aec316dc9bf3d14d5a0ea5b0f6fa072ba6c5c6cfd607bb710cfe0bfda";
-const publicKeySEC = "02ae89c798171980471c0648957ceaf305d3251d7e5c12d3eea3393512680876d2";
+const publicKey2 = "9fb935162187016a973bf090db84c812afe936a2b3acd3961f459be74cc2f1f26501c6c817dac3690c1115e8386b2c9433831656b4d55125580b16753db0f6d9";
 const privateKey = "be92543651fed1d4c76f33e568bd81cfb6d3669c2be9a11499e1111e0e2fd46b";
 const privateKey2 = "4c7d205980a81a7d27f66ba9081da9772630f5281c6f187e9c833e4b30c3da3d";
 const userTag = "FLOW-V0.0-user\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
 
 let prevTransferArgs;
+let prevPublicKey;
 
 function computeSigDataHex(nonce, amount, receiver, privateKey) {
   const nonceBuffer = Buffer.alloc(8);
@@ -130,9 +132,9 @@ describe("Test FlowColdStorageProxy contract", () => {
     const args = ["ProxyAccountA", publicKey, FlowManager];
     const FlowAccount = await getAccountAddress("FlowAccount");
     const signers = [FlowAccount];
-    const [tx, error] = await sendTransaction({ code: txTemplate, signers, args });
+    const [tx, err] = await sendTransaction({ code: txTemplate, signers, args });
 
-    expect(error).toBe(null);
+    expect(err).toBe(null);
 
     let proxyAccountA;
     for (const event of tx.events) {
@@ -195,9 +197,9 @@ describe("Test FlowColdStorageProxy contract", () => {
     const args = ["ProxyAccountB", publicKey, FlowManager];
     const FlowAccount = await getAccountAddress("FlowAccount");
     const signers = [FlowAccount];
-    const [tx, error] = await sendTransaction({ code: txTemplate, signers, args });
+    const [tx, err] = await sendTransaction({ code: txTemplate, signers, args });
 
-    expect(error).toBe(null);
+    expect(err).toBe(null);
 
     let proxyAccountB;
     for (const event of tx.events) {
@@ -255,9 +257,9 @@ describe("Test FlowColdStorageProxy contract", () => {
     const args = [ProxyAccountA, 1.0];
     const FlowAccount = await getAccountAddress("FlowAccount");
     const signers = [FlowAccount];
-    const [tx, error] = await sendTransaction({ name, signers, args });
+    const [tx, err] = await sendTransaction({ name, signers, args });
 
-    expect(error).toBe(null);
+    expect(err).toBe(null);
   });
 
   test("Get balances after normal to proxy transfer - from FlowAccount to ProxyAccountA", async () => {
@@ -465,9 +467,9 @@ describe("Test FlowColdStorageProxy contract", () => {
 
     const args = prevTransferArgs;
     const signers = [ProxyPayer];
-    const [tx, error] = await sendTransaction({ code: scriptTransferTemplate, signers, args });
+    const [tx, err] = await sendTransaction({ code: scriptTransferTemplate, signers, args });
 
-    expect(error).not.toBe(null);
+    expect(err).not.toBe(null);
   });
 
   test("Deposit FLOW with invalid nonce - to ProxyAccountB from ProxyAccountA", async () => {
@@ -569,5 +571,132 @@ describe("Test FlowColdStorageProxy contract", () => {
 
     expect(error).not.toBe(null);
     expect(tx).toBe(null);
+  });
+
+  test("Get public key before contract update - ProxyDeployAccount", async () => {
+    const keyIndex = 0;
+    const ProxyDeployAccount = await getAccountAddress("ProxyDeployAccount");
+    const args = [ProxyDeployAccount, keyIndex];
+    const [key, err] = await executeScript({
+      name: "get-public-key",
+      args
+    });
+
+    expect(err).toBe(null);
+    expect(key).not.toBe(null);
+    prePublicKey = key;
+  });
+
+  test("Get key index before contract update - ProxyDeployAccount", async () => {
+    const keyIndex = 0;
+    const ProxyDeployAccount = await getAccountAddress("ProxyDeployAccount");
+    const args = [ProxyDeployAccount, keyIndex];
+    const [key, err] = await executeScript({
+      name: "get-key-index",
+      args
+    });
+
+    expect(err).toBe(null);
+    expect(key).toBe(keyIndex);
+  });
+
+  test("Get revoke status of key before contract update - ProxyDeployAccount", async () => {
+    const keyIndex = 0;
+    const ProxyDeployAccount = await getAccountAddress("ProxyDeployAccount");
+    const args = [ProxyDeployAccount, keyIndex];
+    const [status, err] = await executeScript({
+      name: "get-revoke-status",
+      args
+    });
+
+    expect(err).toBe(null);
+    expect(status).toBe(false);
+  });
+
+  test("Update proxy contract - to ProxyDeployAccount", async () => {
+    const name = "FlowColdStorageProxy";
+    const address = await getContractAddress(name);
+    let data = fs.readFileSync("cadence/contracts/FlowColdStorageProxy.cdc");
+    data = data.toString().replace("AUTOMATED TESTS.", `
+
+      pub fun newMethod(): String {
+        return "proxy contract updated"
+      }
+
+    `);
+
+    const publicKeyBuffer = Buffer.from(publicKey2, "hex");
+
+    const prevKeyIndex = 0;
+    const hashResult = crypto.createHash("sha3-256")
+      .update(publicKeyBuffer)
+      .digest("hex");
+
+    const args = [name, data, prevKeyIndex, publicKey2, hashResult];
+    const signers = [address];
+    const [tx, err] = await sendTransaction({ name: "proxy-contract-update", signers, args });
+
+    expect(err).toBe(null);
+    expect(tx).not.toBe(null);
+  });
+
+  test("Get revoke status of previous key after contract update - ProxyDeployAccount", async () => {
+    const keyIndex = 0;
+    const ProxyDeployAccount = await getAccountAddress("ProxyDeployAccount");
+    const args = [ProxyDeployAccount, keyIndex];
+    const [status, err] = await executeScript({
+      name: "get-revoke-status",
+      args
+    });
+
+    expect(err).toBe(null);
+    expect(status).toBe(true);
+  });
+
+  test("Get key index after contract update - ProxyDeployAccount", async () => {
+    const keyIndex = 1;
+    const ProxyDeployAccount = await getAccountAddress("ProxyDeployAccount");
+    const args = [ProxyDeployAccount, keyIndex];
+    const [key, err] = await executeScript({
+      name: "get-key-index",
+      args
+    });
+
+    expect(err).toBe(null);
+    expect(key).toBe(keyIndex);
+  });
+
+  test("Get public key after contract update - ProxyDeployAccount", async () => {
+    const keyIndex = 1;
+    const ProxyDeployAccount = await getAccountAddress("ProxyDeployAccount");
+    const args = [ProxyDeployAccount, keyIndex];
+    const [key, err] = await executeScript({
+      name: "get-public-key",
+      args
+    });
+
+    expect(err).toBe(null);
+    expect(key).toBe(publicKey2);
+    expect(key).not.toBe(prePublicKey);
+  });
+
+  test("Call the new method on updated contract - ProxyAccountA", async () => {
+    const ProxyAccountA = await getAccountAddress("ProxyAccountA");
+
+    const FlowColdStorageProxy = await getContractAddress("FlowColdStorageProxy");
+    const addressMap = { FlowColdStorageProxy };
+    const scriptTemplate = await getScriptCode({
+      name: "get-proxy-newmethod",
+      addressMap,
+    });
+
+    args = [ProxyAccountA];
+    const [msg, err] = await executeScript({
+      code: scriptTemplate,
+      args
+    });
+
+    expect(err).toBe(null);
+    expect(msg).toBe("proxy contract updated");
   });
 });
