@@ -4,8 +4,8 @@ go 1.16
 
 require (
 	github.com/btcsuite/btcd v0.22.1 // indirect
-	github.com/btcsuite/btcd/btcec/v2 v2.2.0
 	github.com/coinbase/rosetta-sdk-go v0.7.0
+	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.0.1
 	github.com/dgraph-io/badger/v2 v2.2007.4
 	github.com/dgraph-io/badger/v3 v3.2103.2
 	github.com/docker/distribution v2.8.1+incompatible // indirect
@@ -13,11 +13,12 @@ require (
 	github.com/ethereum/go-ethereum v1.10.18
 	github.com/golang/protobuf v1.5.2
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
+	github.com/libp2p/go-libp2p-pubsub v0.6.2-0.20220530164708-06b5ba47636c // indirect
 	github.com/libp2p/go-libp2p-tls v0.4.1
 	github.com/moby/term v0.0.0-20210619224110-3f7ff695adc6 // indirect
-	github.com/onflow/cadence v0.24.0
-	github.com/onflow/flow-go v0.26.6
-	github.com/onflow/flow-go/crypto v0.24.3
+	github.com/onflow/cadence v0.24.6
+	github.com/onflow/flow-go v0.26.17
+	github.com/onflow/flow-go/crypto v0.24.4-0.20220720222908-13970fcae812
 	github.com/onflow/flow/protobuf/go/flow v0.3.1
 	github.com/opencontainers/image-spec v1.0.2 // indirect
 	github.com/opencontainers/runtime-spec v1.0.3-0.20210326190908-1c3f411f0417 // indirect

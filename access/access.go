@@ -417,6 +417,32 @@ func (c Client) TransactionResult(ctx context.Context, blockID []byte, txnIndex 
 	return resp, nil
 }
 
+// TransactionResultByHash returns the transaction result for the given
+// transaction hash. In case of duplicates for the same transaction hash, the
+// returned result will only be for one of the submissions.
+func (c Client) TransactionResultByHash(ctx context.Context, hash []byte) (*access.TransactionResultResponse, error) {
+	ctx, span := c.newSpan(ctx, "flow.access_api.TransactionResultByHash")
+	ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
+	resp, err := c.client.GetTransactionResult(
+		ctx,
+		&access.GetTransactionRequest{
+			Id: hash,
+		},
+	)
+	cancel()
+	if err != nil {
+		trace.EndSpanErr(span, err)
+		return nil, err
+	}
+	if resp.BlockHeight == 0 {
+		err = fmt.Errorf("access: failed to find transaction result by hash: %x", hash)
+		trace.EndSpanErr(span, err)
+		return nil, err
+	}
+	trace.EndSpanOk(span)
+	return resp, nil
+}
+
 // TransactionResultsByBlockID returns the transaction results for the given
 // block ID.
 func (c Client) TransactionResultsByBlockID(ctx context.Context, blockID []byte) ([]*access.TransactionResultResponse, error) {

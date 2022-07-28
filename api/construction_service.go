@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"math/big"
 	"strconv"
 	"strings"
 
@@ -52,7 +53,7 @@ func (s *Server) ConstructionCombine(ctx context.Context, r *types.ConstructionC
 	if txn != nil {
 		txn.EnvelopeSignatures = []*entities.Transaction_Signature{{
 			Address:   txn.Payer,
-			KeyId:     0,
+			KeyId:     txn.ProposalKey.KeyId,
 			Signature: sig,
 		}}
 		enc, err := proto.Marshal(legacyProto.MessageV2(txn))
@@ -178,18 +179,49 @@ func (s *Server) ConstructionMetadata(ctx context.Context, r *types.Construction
 			trace.Int64("latest_height_local", int64(latest.Height)),
 			trace.Int64("latest_height_remote", int64(hdr.Height)),
 		)
+		acct, err := client.AccountAtHeight(ctx, opts.Payer, height)
+		if err != nil {
+			return nil, wrapErr(errInternal, err)
+		}
+		count := 0
 		if opts.SequenceNumber == -1 {
-			acct, err := client.AccountAtHeight(ctx, opts.Payer, height)
-			if err != nil {
-				return nil, wrapErr(errInternal, err)
+			found := false
+			for _, key := range acct.Keys {
+				if key.Index == opts.KeyId {
+					if key.Revoked {
+						return nil, wrapErrorf(
+							errInvalidKeyID,
+							"key %d has been revoked",
+							opts.KeyId,
+						)
+					}
+					opts.SequenceNumber = int64(key.SequenceNumber)
+					count++
+					found = true
+				} else if !key.Revoked {
+					count++
+				}
 			}
-			if len(acct.Keys) != 1 {
+			if !found {
 				return nil, wrapErrorf(
-					errInvalidNumberOfAccountKeys,
-					"found %d keys", len(acct.Keys),
+					errInvalidKeyID,
+					"could not find key ID %d out of %d keys",
+					opts.KeyId, len(acct.Keys),
 				)
 			}
-			opts.SequenceNumber = int64(acct.Keys[0].SequenceNumber)
+		} else {
+			for _, key := range acct.Keys {
+				if !key.Revoked {
+					count++
+				}
+			}
+		}
+		if count != 1 {
+			return nil, wrapErrorf(
+				errInvalidNumberOfAccountKeys,
+				"found %d valid keys out of total %d keys",
+				count, len(acct.Keys),
+			)
 		}
 	}
 	data, err := proto.Marshal(opts)
@@ -226,11 +258,8 @@ func (s *Server) ConstructionParse(ctx context.Context, r *types.ConstructionPar
 		if bytes.Equal(txn.Script, s.scriptCreateProxyAccount) {
 			return decodeCreateAccountOps(txn, true, r.Signed)
 		}
-		if bytes.Equal(txn.Script, s.scriptDeployContract) {
-			return decodeContractOps(txn, false, r.Signed)
-		}
-		if bytes.Equal(txn.Script, s.scriptUpdateContract) {
-			return decodeContractOps(txn, true, r.Signed)
+		if bytes.Equal(txn.Script, s.scriptSetContract) {
+			return decodeContractOps(txn, r.Signed)
 		}
 		return nil, errInvalidTransactionPayload
 	}
@@ -341,12 +370,17 @@ func (s *Server) ConstructionPayloads(ctx context.Context, r *types.Construction
 			args = append(args, arg)
 		}
 	} else if intent.contractCode != "" {
-		if intent.contractUpdate {
-			script = s.scriptUpdateContract
-		} else {
-			script = s.scriptDeployContract
+		script = s.scriptSetContract
+		arg, err := jsoncdc.Encode(cadence.Bool(intent.contractUpdate))
+		if err != nil {
+			return nil, wrapErrorf(
+				errInvalidOpsIntent,
+				"unable to JSON encode contract deploy/update flag: %s",
+				err,
+			)
 		}
-		arg, err := jsoncdc.Encode(cadence.String(intent.contractName))
+		args = append(args, arg)
+		arg, err = jsoncdc.Encode(cadence.String(intent.contractName))
 		if err != nil {
 			return nil, wrapErrorf(
 				errInvalidOpsIntent, "unable to JSON encode contract name: %s", err,
@@ -357,6 +391,41 @@ func (s *Server) ConstructionPayloads(ctx context.Context, r *types.Construction
 		if err != nil {
 			return nil, wrapErrorf(
 				errInvalidOpsIntent, "unable to JSON encode contract code: %s", err,
+			)
+		}
+		args = append(args, arg)
+		arg, err = jsoncdc.Encode(cadence.NewInt(int(intent.prevKeyIndex)))
+		if err != nil {
+			return nil, wrapErrorf(
+				errInvalidOpsIntent, "unable to JSON encode prev key index: %s", err,
+			)
+		}
+		args = append(args, arg)
+		arg, err = jsoncdc.Encode(cadence.String(intent.newKey))
+		if err != nil {
+			return nil, wrapErrorf(
+				errInvalidOpsIntent, "unable to JSON encode new key: %s", err,
+			)
+		}
+		args = append(args, arg)
+		arg, err = jsoncdc.Encode(cadence.String(intent.keyMessage))
+		if err != nil {
+			return nil, wrapErrorf(
+				errInvalidOpsIntent, "unable to JSON encode key message: %s", err,
+			)
+		}
+		args = append(args, arg)
+		arg, err = jsoncdc.Encode(cadence.String(intent.keySignature))
+		if err != nil {
+			return nil, wrapErrorf(
+				errInvalidOpsIntent, "unable to JSON encode key signature: %s", err,
+			)
+		}
+		args = append(args, arg)
+		arg, err = jsoncdc.Encode(cadence.String(intent.keyMetadata))
+		if err != nil {
+			return nil, wrapErrorf(
+				errInvalidOpsIntent, "unable to JSON encode key metadata: %s", err,
 			)
 		}
 		args = append(args, arg)
@@ -422,7 +491,7 @@ func (s *Server) ConstructionPayloads(ctx context.Context, r *types.Construction
 		Payer:       payer,
 		ProposalKey: &entities.Transaction_ProposalKey{
 			Address:        payer,
-			KeyId:          0,
+			KeyId:          opts.KeyId,
 			SequenceNumber: uint64(opts.SequenceNumber),
 		},
 		ReferenceBlockId: opts.BlockHash,
@@ -488,6 +557,7 @@ func (s *Server) ConstructionPreprocess(ctx context.Context, r *types.Constructi
 		opts.ProxyTransferPayload = raw
 	}
 	if intent.contractCode != "" {
+		opts.KeyId = intent.prevKeyIndex
 		if intent.contractUpdate {
 			opts.ExecutionEffort = fees.UpdateContractEffort
 		} else {
@@ -859,8 +929,131 @@ func (s *Server) parseIntent(ops []*types.Operation) (*txnIntent, *types.Error) 
 				"contract_code metadata field on operation is empty",
 			)
 		}
+		val, ok = op.Metadata["prev_key_index"]
+		if !ok {
+			return nil, wrapErrorf(
+				errInvalidOpsIntent, "prev_key_index metadata field missing on operation",
+			)
+		}
+		prevKeyIndex, ok := val.(float64)
+		if !ok {
+			return nil, wrapErrorf(
+				errInvalidOpsIntent,
+				"prev_key_index metadata field on operation is not a number: %v",
+				val,
+			)
+		}
+		val, ok = op.Metadata["new_key"]
+		if !ok {
+			return nil, wrapErrorf(
+				errInvalidOpsIntent, "new_key metadata field missing on operation",
+			)
+		}
+		rawKey, ok := val.(string)
+		if !ok {
+			return nil, wrapErrorf(
+				errInvalidOpsIntent,
+				"new_key metadata field on operation is not a string: %v",
+				val,
+			)
+		}
+		srcKey, err := hex.DecodeString(rawKey)
+		if err != nil {
+			return nil, wrapErrorf(
+				errInvalidOpsIntent,
+				"failed to hex-decode new_key metadata field on operation: %s",
+				err,
+			)
+		}
+		if len(srcKey) == 0 {
+			return nil, wrapErrorf(
+				errInvalidOpsIntent,
+				"new_key metadata field on operation is empty",
+			)
+		}
+		newKey, err := crypto.ConvertRosettaPublicKey(srcKey)
+		if err != nil {
+			return nil, wrapErrorf(
+				errInvalidOpsIntent,
+				"could not convert new_key value from operation: %s",
+				err,
+			)
+		}
+		val, ok = op.Metadata["key_message"]
+		if !ok {
+			return nil, wrapErrorf(
+				errInvalidOpsIntent, "key_message metadata field missing on operation",
+			)
+		}
+		keyMessage, ok := val.(string)
+		if !ok {
+			return nil, wrapErrorf(
+				errInvalidOpsIntent,
+				"key_message metadata field on operation is not a string: %v",
+				val,
+			)
+		}
+		if len(keyMessage) == 0 {
+			return nil, wrapErrorf(
+				errInvalidOpsIntent,
+				"key_message metadata field on operation is empty",
+			)
+		}
+		val, ok = op.Metadata["key_signature"]
+		if !ok {
+			return nil, wrapErrorf(
+				errInvalidOpsIntent, "key_signature metadata field missing on operation",
+			)
+		}
+		keySignature, ok := val.(string)
+		if !ok {
+			return nil, wrapErrorf(
+				errInvalidOpsIntent,
+				"key_signature metadata field on operation is not a string: %v",
+				val,
+			)
+		}
+		if len(keySignature) == 0 {
+			return nil, wrapErrorf(
+				errInvalidOpsIntent,
+				"key_signature metadata field on operation is empty",
+			)
+		}
+		keySignature, err = crypto.ConvertDERSignature(keySignature)
+		if err != nil {
+			return nil, wrapErrorf(
+				errInvalidOpsIntent,
+				"could not convert key_signature value from operation: %s",
+				err,
+			)
+		}
+		val, ok = op.Metadata["key_metadata"]
+		if !ok {
+			return nil, wrapErrorf(
+				errInvalidOpsIntent, "key_metadata metadata field missing on operation",
+			)
+		}
+		keyMetadata, ok := val.(string)
+		if !ok {
+			return nil, wrapErrorf(
+				errInvalidOpsIntent,
+				"key_metadata metadata field on operation is not a string: %v",
+				val,
+			)
+		}
+		if len(keyMetadata) == 0 {
+			return nil, wrapErrorf(
+				errInvalidOpsIntent,
+				"key_metadata metadata field on operation is empty",
+			)
+		}
 		intent.contractCode = code
 		intent.contractName = name
+		intent.keyMessage = keyMessage
+		intent.keyMetadata = keyMetadata
+		intent.keySignature = keySignature
+		intent.newKey = hex.EncodeToString(newKey)
+		intent.prevKeyIndex = uint32(prevKeyIndex)
 		if typ == opUpdateContract {
 			intent.contractUpdate = true
 		}
@@ -931,8 +1124,8 @@ func (s *Server) parseIntent(ops []*types.Operation) (*txnIntent, *types.Error) 
 	return intent, nil
 }
 
-func decodeContractOps(txn *entities.Transaction, update bool, signed bool) (*types.ConstructionParseResponse, *types.Error) {
-	if len(txn.Arguments) != 2 {
+func decodeContractOps(txn *entities.Transaction, signed bool) (*types.ConstructionParseResponse, *types.Error) {
+	if len(txn.Arguments) != 8 {
 		return nil, wrapErrorf(
 			errInvalidTransactionPayload,
 			"invalid number of transaction args: %d", len(txn.Arguments),
@@ -944,13 +1137,29 @@ func decodeContractOps(txn *entities.Transaction, update bool, signed bool) (*ty
 			errInvalidTransactionPayload, "unable to decode transaction arg: %s", err,
 		)
 	}
+	update, ok := raw.ToGoValue().(bool)
+	if !ok {
+		return nil, wrapErrorf(
+			errInvalidTransactionPayload, "unable to convert transaction arg to string",
+		)
+	}
+	typ := opDeployContract
+	if update {
+		typ = opUpdateContract
+	}
+	raw, err = jsoncdc.Decode(access.NoopMemoryGauge, txn.Arguments[1])
+	if err != nil {
+		return nil, wrapErrorf(
+			errInvalidTransactionPayload, "unable to decode transaction arg: %s", err,
+		)
+	}
 	name, ok := raw.ToGoValue().(string)
 	if !ok {
 		return nil, wrapErrorf(
 			errInvalidTransactionPayload, "unable to convert transaction arg to string",
 		)
 	}
-	raw, err = jsoncdc.Decode(access.NoopMemoryGauge, txn.Arguments[1])
+	raw, err = jsoncdc.Decode(access.NoopMemoryGauge, txn.Arguments[2])
 	if err != nil {
 		return nil, wrapErrorf(
 			errInvalidTransactionPayload, "unable to decode transaction arg: %s", err,
@@ -962,15 +1171,100 @@ func decodeContractOps(txn *entities.Transaction, update bool, signed bool) (*ty
 			errInvalidTransactionPayload, "unable to convert transaction arg to string",
 		)
 	}
-	typ := opDeployContract
-	if update {
-		typ = opUpdateContract
+	raw, err = jsoncdc.Decode(access.NoopMemoryGauge, txn.Arguments[3])
+	if err != nil {
+		return nil, wrapErrorf(
+			errInvalidTransactionPayload, "unable to decode transaction arg: %s", err,
+		)
+	}
+	prevKeyIndex, ok := raw.ToGoValue().(*big.Int)
+	if !ok {
+		return nil, wrapErrorf(
+			errInvalidTransactionPayload, "unable to convert transaction arg to *big.Int",
+		)
+	}
+	raw, err = jsoncdc.Decode(access.NoopMemoryGauge, txn.Arguments[4])
+	if err != nil {
+		return nil, wrapErrorf(
+			errInvalidTransactionPayload, "unable to decode transaction arg: %s", err,
+		)
+	}
+	rawKey, ok := raw.ToGoValue().(string)
+	if !ok {
+		return nil, wrapErrorf(
+			errInvalidTransactionPayload, "unable to convert transaction arg to string",
+		)
+	}
+	flowKey, err := hex.DecodeString(rawKey)
+	if err != nil {
+		return nil, wrapErrorf(
+			errInvalidTransactionPayload,
+			"unable to hex-decode new key transaction arg: %s",
+			err,
+		)
+	}
+	newKey, err := crypto.ConvertFlowPublicKey(flowKey)
+	if err != nil {
+		return nil, wrapErrorf(
+			errInvalidTransactionPayload,
+			"unable to convert new key transaction arg: %s",
+			err,
+		)
+	}
+	raw, err = jsoncdc.Decode(access.NoopMemoryGauge, txn.Arguments[5])
+	if err != nil {
+		return nil, wrapErrorf(
+			errInvalidTransactionPayload, "unable to decode transaction arg: %s", err,
+		)
+	}
+	keyMessage, ok := raw.ToGoValue().(string)
+	if !ok {
+		return nil, wrapErrorf(
+			errInvalidTransactionPayload, "unable to convert transaction arg to string",
+		)
+	}
+	raw, err = jsoncdc.Decode(access.NoopMemoryGauge, txn.Arguments[6])
+	if err != nil {
+		return nil, wrapErrorf(
+			errInvalidTransactionPayload, "unable to decode transaction arg: %s", err,
+		)
+	}
+	rawSignature, ok := raw.ToGoValue().(string)
+	if !ok {
+		return nil, wrapErrorf(
+			errInvalidTransactionPayload, "unable to convert transaction arg to string",
+		)
+	}
+	keySignature, err := crypto.ConvertFlowSignature(rawSignature)
+	if err != nil {
+		return nil, wrapErrorf(
+			errInvalidTransactionPayload,
+			"unable to convert key signature transaction arg: %s",
+			err,
+		)
+	}
+	raw, err = jsoncdc.Decode(access.NoopMemoryGauge, txn.Arguments[7])
+	if err != nil {
+		return nil, wrapErrorf(
+			errInvalidTransactionPayload, "unable to decode transaction arg: %s", err,
+		)
+	}
+	keyMetadata, ok := raw.ToGoValue().(string)
+	if !ok {
+		return nil, wrapErrorf(
+			errInvalidTransactionPayload, "unable to convert transaction arg to string",
+		)
 	}
 	return txnOps(txn, []*types.Operation{
 		{
 			Metadata: map[string]interface{}{
-				"contract_code": code,
-				"contract_name": name,
+				"contract_code":  code,
+				"contract_name":  name,
+				"key_message":    keyMessage,
+				"key_metadata":   keyMetadata,
+				"key_signature":  keySignature,
+				"new_key":        hex.EncodeToString(newKey),
+				"prev_key_index": prevKeyIndex.Int64(),
 			},
 			OperationIdentifier: &types.OperationIdentifier{
 				Index: 0,

@@ -22,6 +22,7 @@ var (
 	// on-chain errors
 	errInvalidNumberOfAccountKeys = newError(201, "invalid number of account keys", false)
 	errTransactionExpired         = newError(202, "transaction expired", false)
+	errInvalidKeyID               = newError(203, "invalid key id", false)
 	// internal errors
 	errInternal    = newError(301, "unexpected internal error", false)
 	errMissingData = newError(302, "block state doesn't exist or has been pruned at the execution node", false)
