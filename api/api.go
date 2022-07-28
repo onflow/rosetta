@@ -87,13 +87,12 @@ type Server struct {
 	scriptComputeFees        []byte
 	scriptCreateAccount      []byte
 	scriptCreateProxyAccount []byte
-	scriptDeployContract     []byte
 	scriptGetBalances        []byte
 	scriptGetBalancesBasic   []byte
 	scriptGetProxyNonce      []byte
 	scriptGetProxyPublicKey  []byte
 	scriptProxyTransfer      []byte
-	scriptUpdateContract     []byte
+	scriptSetContract        []byte
 	validation               *validation
 	validationMu             sync.RWMutex // protects validation
 }
@@ -165,13 +164,12 @@ func (s *Server) compileScripts() {
 	s.scriptComputeFees = script.Compile("compute_fees", script.ComputeFees, s.Chain)
 	s.scriptCreateAccount = script.Compile("create_account", script.CreateAccount, s.Chain)
 	s.scriptCreateProxyAccount = script.Compile("create_proxy_account", script.CreateProxyAccount, s.Chain)
-	s.scriptDeployContract = script.Compile("deploy_contract", script.DeployContract, s.Chain)
 	s.scriptGetBalances = script.Compile("get_balances", script.GetBalances, s.Chain)
 	s.scriptGetBalancesBasic = script.Compile("get_balances_basic", script.GetBalancesBasic, s.Chain)
 	s.scriptGetProxyNonce = script.Compile("get_proxy_nonce", script.GetProxyNonce, s.Chain)
 	s.scriptGetProxyPublicKey = script.Compile("get_proxy_public_key", script.GetProxyPublicKey, s.Chain)
 	s.scriptProxyTransfer = script.Compile("proxy_transfer", script.ProxyTransfer, s.Chain)
-	s.scriptUpdateContract = script.Compile("update_contract", script.UpdateContract, s.Chain)
+	s.scriptSetContract = script.Compile("set_contract", script.SetContract, s.Chain)
 }
 
 func (s *Server) getAccount(addr string) ([]byte, *types.Error) {
@@ -287,8 +285,13 @@ type txnIntent struct {
 	contractCode   string
 	contractName   string
 	contractUpdate bool
+	keyMessage     string
+	keyMetadata    string
+	keySignature   string
 	keys           []string
 	inner          bool
+	newKey         string
+	prevKeyIndex   uint32
 	proxy          bool
 	receiver       []byte
 	sender         []byte

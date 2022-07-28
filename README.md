@@ -782,7 +782,12 @@ Use `deploy_contract` to deploy a contract to a `payer` account:
     },
     "metadata": {
       "contract_code": "70756220636f6e74726163742048656c6c6f576f726c64207b0a202020207075622066756e2068656c6c6f28293a20537472696e67207b0a202020202020202072657475726e202248656c6c6f20776f726c6421220a202020207d0a7d0a",
-      "contract_name": "HelloWorld"
+      "contract_name": "HelloWorld",
+      "key_message": "some message to sign",
+      "key_metadata": "key_id: 1234",
+      "key_signature": "3044022034d188e2aa3c5e6c65b323c400b536b268b2326b49f1d69467753ffc0a5ad538022051e8e9552deddea020b174dfc3d4c91d1c435867010f73c38d1c760817069e47",
+      "new_key": "025a7a5a204e7207c02121f5444a47ec29cc34495926b7136ea1e2169dd5445dcc",
+      "prev_key_index": 0
     }
   }
 ]
@@ -794,6 +799,14 @@ by piping the source code into something like:
 ```bash
 $ cat file.cdc | hexdump -v -e '/1 "%02x"'
 ```
+
+The `key_signature` needs to be a valid ECDSA signature with the given `new_key`
+over the SHA2-256 hash of the specified `key_message`. The `key_metadata` field
+can be any arbitrary string. It's only passed in as a parameter to leave an
+on-chain audit trail, and is not stored anywhere else.
+
+The `prev_key_index` must be the key index of the most recently set key. This
+key will be revoked as part of the deploy transaction.
 
 Note: Once a `deploy_contract` transaction has been submitted and lands on
 chain, there will be no corresponding operation within the transaction's
@@ -909,7 +922,12 @@ Use `update_contract` to update an existing contract on a `payer` account:
     },
     "metadata": {
       "contract_code": "70756220636f6e74726163742048656c6c6f576f726c64207b0a202020207075622066756e2068656c6c6f28293a20537472696e67207b0a202020202020202072657475726e202248656c6c6f20746865726521220a202020207d0a7d0a",
-      "contract_name": "HelloWorld"
+      "contract_name": "HelloWorld",
+      "key_message": "some message to sign",
+      "key_metadata": "key_id: 1234",
+      "key_signature": "3044022034d188e2aa3c5e6c65b323c400b536b268b2326b49f1d69467753ffc0a5ad538022051e8e9552deddea020b174dfc3d4c91d1c435867010f73c38d1c760817069e47",
+      "new_key": "025a7a5a204e7207c02121f5444a47ec29cc34495926b7136ea1e2169dd5445dcc",
+      "prev_key_index": 1
     }
   }
 ]

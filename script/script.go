@@ -85,44 +85,6 @@ transaction(publicKey: String) {
 }
 `
 
-// DeployContract defines the template for deploying the given contract on an
-// account.
-const DeployContract = `transaction(contractName: String, contractCode: String) {
-    prepare(payer: AuthAccount) {
-        payer.contracts.add(
-            name: contractName,
-            code: contractCode.decodeHex()
-        )
-    }
-}
-`
-
-// DeployContractAccount defines the template for deploying the given contract
-// on an account, while also updating the account's signing key.
-const DeployContractAccount = `transaction(contractName: String, contractCode: String, prevKeyIndex: Int, newKey: String, newKeyHash: String) {
-    prepare(payer: AuthAccount) {
-        let hash = HashAlgorithm.SHA3_256.hash(newKey.decodeHex())
-        if hash != newKeyHash {
-            panic("Mismatching hash for new signing key")
-        }
-        payer.contracts.add(
-            name: contractName,
-            code: contractCode.decodeHex()
-        )
-        let publicKey = PublicKey(
-            publicKey: newKey.decodeHex(),
-            signatureAlgorithm: SignatureAlgorithm.ECDSA_secp256k1
-        )
-        acct.keys.add(
-            publicKey: publicKey,
-            hashAlgorithm: HashAlgorithm.SHA3_256,
-            weight: 1000.0
-        )
-        payer.keys.revoke(keyIndex: prevKeyIndex)
-    }
-}
-`
-
 // GetBalances defines the template for the read-only transaction script that
 // returns an account's balances.
 //
@@ -245,35 +207,44 @@ transaction(sender: Address, receiver: Address, amount: UFix64, nonce: Int64, si
 }
 `
 
-// UpdateContract updates an existing contract.
-const UpdateContract = `transaction(contractName: String, contractCode: String) {
+// SetContract deploys/updates a contract on an account, while also updating the
+// account's signing key.
+const SetContract = `transaction(update: Bool, contractName: String, contractCode: String, prevKeyIndex: Int, newKey: String, keyMessage: String, keySignature: String, keyMetadata: String) {
     prepare(payer: AuthAccount) {
-        payer.contracts.update__experimental(
-            name: contractName,
-            code: contractCode.decodeHex()
-        )
-    }
-}
-`
-
-// UpdateContractAccount updates an existing contract on an account, while also
-// updating the account's signing key.
-const UpdateContractAccount = `transaction(contractName: String, contractCode: String, prevKeyIndex: Int, newKey: String, newKeyHash: String) {
-    prepare(payer: AuthAccount) {
-        let hash = HashAlgorithm.SHA3_256.hash(newKey.decodeHex())
-        if hash != newKeyHash {
-            panic("Mismatching hash for new signing key")
-        }
-        payer.contracts.update__experimental(
-            name: contractName,
-            code: contractCode.decodeHex()
-        )
-        let publicKey = PublicKey(
+        let key = PublicKey(
             publicKey: newKey.decodeHex(),
             signatureAlgorithm: SignatureAlgorithm.ECDSA_secp256k1
         )
-        acct.keys.add(
-            publicKey: publicKey,
+        let verified = key.verify(
+            signature: keySignature.decodeHex(),
+            signedData: keyMessage.utf8,
+            domainSeparationTag: "",
+            hashAlgorithm: HashAlgorithm.SHA2_256
+        )
+        if !verified {
+            panic("Key cannot be verified")
+        }
+        let prevKey = payer.keys.get(keyIndex: prevKeyIndex)
+        if prevKey == nil {
+            panic("Invalid prevKeyIndex, didn't find matching key")
+        }
+        let nextKey = payer.keys.get(keyIndex: prevKeyIndex + 1)
+        if nextKey != nil {
+            panic("Invalid prevKeyIndex, found key at next key index")
+        }
+        if update {
+            payer.contracts.update__experimental(
+                name: contractName,
+                code: contractCode.decodeHex()
+            )
+        } else {
+            payer.contracts.add(
+                name: contractName,
+                code: contractCode.decodeHex()
+            )
+        }
+        payer.keys.add(
+            publicKey: key,
             hashAlgorithm: HashAlgorithm.SHA3_256,
             weight: 1000.0
         )

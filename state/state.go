@@ -675,6 +675,9 @@ func (i *Indexer) runConsensusFollower(ctx context.Context) {
 		"0.0.0.0:8040",
 		nodes,
 		follower.WithBootstrapDir(sporkDir),
+		follower.WithComplianceConfig(&compliance.Config{
+			SkipNewProposalsThreshold: 5 * compliance.MinSkipNewProposalsThreshold,
+		}),
 		follower.WithDB(db),
 		follower.WithLogLevel("info"),
 		follower.WithSyncCoreConfig(&synchronization.Config{
@@ -685,10 +688,6 @@ func (i *Indexer) runConsensusFollower(ctx context.Context) {
 			Tolerance:     10,
 		}),
 	)
-	// TODO(tav): Specify the cache limit for new proposals once the Consensus
-	// Follower can be configured with it.
-	//
-	compliance.WithSkipNewProposalsThreshold(compliance.MinSkipNewProposalsThreshold)
 	if err != nil {
 		log.Fatalf("Failed to create the consensus follower: %s", err)
 	}

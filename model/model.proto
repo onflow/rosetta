@@ -47,6 +47,7 @@ message ConstructOpts {
     string block_hash_remote_server = 7;
     uint64 execution_effort = 9;
     uint64 fees = 8;
+    uint32 key_id = 12;
     uint64 inclusion_effort = 10;
     bool inner = 2;
     uint64 new_accounts = 11;
