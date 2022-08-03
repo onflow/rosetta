@@ -170,7 +170,7 @@ func deriveEventsHash(spork *config.Spork, events []flowEvent) flow.Identifier {
 	case 2, 3:
 		return deriveEventsHashV2(events)
 	case 4:
-		return deriveEventsHashV3(events)
+		return deriveEventsHashV4(events)
 	}
 	panic("unreachable code")
 }
@@ -230,7 +230,7 @@ func deriveEventsHashV2(events []flowEvent) flow.Identifier {
 	return root
 }
 
-func deriveEventsHashV3(events []flowEvent) flow.Identifier {
+func deriveEventsHashV4(events []flowEvent) flow.Identifier {
 	tree, err := merkle.NewTree(flow.IdentifierLen)
 	if err != nil {
 		log.Fatalf("Failed to instantiate merkle tree: %s", err)
