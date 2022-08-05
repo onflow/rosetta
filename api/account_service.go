@@ -175,8 +175,17 @@ func (s *Server) getSequenceNumber(ctx context.Context, addr []byte, block *mode
 	if err != nil {
 		return 0, err
 	}
-	if len(acct.Keys) != 1 {
-		return 0, fmt.Errorf("found %d keys on the account: expected just one", len(acct.Keys))
+	count := 0
+	seq := uint64(0)
+	for _, key := range acct.Keys {
+		if key.Revoked {
+			continue
+		}
+		seq = uint64(key.SequenceNumber)
+		count++
 	}
-	return uint64(acct.Keys[0].SequenceNumber), nil
+	if count != 1 {
+		return 0, fmt.Errorf("found %d valid keys out of total %d keys", count, len(acct.Keys))
+	}
+	return seq, nil
 }

@@ -650,7 +650,7 @@ func (i *Indexer) runConsensusFollower(ctx context.Context) {
 	if err != nil || n != flowcrypto.KeyGenSeedMinLenECDSASecp256k1 {
 		log.Fatalf("Could not generate seed for the consensus follower private key")
 	}
-	key, err := utils.GenerateUnstakedNetworkingKey(seed)
+	key, err := utils.GeneratePublicNetworkingKey(seed)
 	if err != nil {
 		log.Fatalf("Could not generate the consensus follower private key")
 	}
