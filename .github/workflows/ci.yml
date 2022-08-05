@@ -14,5 +14,4 @@ jobs:
       - name: Make go deps
         run: make deps
       - name: Build
-        run: make ci-build
-      
+        run: make

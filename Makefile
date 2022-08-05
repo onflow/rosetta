@@ -5,15 +5,10 @@ all: build
 relic:
 	./environ/build-relic.py
 
-crypto-setup:
-	bash crypto_setup.sh
-
 go-build:
 	go build -tags relic -o server cmd/server/server.go
 
 build: relic go-build
-
-ci-build: crypto-setup go-build
 
 deps:
 	go mod download -x
