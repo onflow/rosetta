@@ -19,7 +19,7 @@ import (
 	"github.com/onflow/rosetta/model"
 	"github.com/onflow/rosetta/process"
 	"github.com/onflow/rosetta/script"
-	"github.com/onflow/rosta/state"
+	"github.com/onflow/rosetta/state"
 )
 
 const (
