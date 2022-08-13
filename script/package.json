@@ -5,7 +5,7 @@
     "test": "jest"
   },
   "dependencies": {
-    "@onflow/flow-js-testing": "0.3.0-alpha.13",
+    "@onflow/flow-js-testing": "0.3.0-alpha.14",
     "esm": "^3.2.25",
     "jest": "^28.1.1",
     "secp256k1": "^4.0.3",

@@ -11,6 +11,7 @@ const {
   init,
   mintFlow,
   sendTransaction,
+  SignatureAlgorithm,
 } = require("@onflow/flow-js-testing");
 
 const crypto = require("crypto");
@@ -114,7 +115,7 @@ describe("Test FlowColdStorageProxy contract", () => {
 
     const index = parseInt(len, 10) - 1;
 
-    const argsIndex = [FlowColdStorageProxy, index];
+    const argsIndex = [FlowColdStorageProxy, index.toString()];
     const [keyIndexValue, errIndex] = await executeScript({
       name: "get-key-index",
       args: argsIndex
@@ -125,7 +126,7 @@ describe("Test FlowColdStorageProxy contract", () => {
     const keyIndex = parseInt(keyIndexValue, 10);
     const data = fs.readFileSync("cadence/contracts/FlowColdStorageProxy.cdc");
 
-    const args = [false, name, data.toString(), keyIndex, publicKey3, keyMessage, keySignature, "keyid123"];
+    const args = [false, name, data.toString(), keyIndex.toString(), publicKey3, keyMessage, keySignature, "keyid123"];
     const signers = [
       {
         addr: FlowColdStorageProxy,
@@ -397,7 +398,7 @@ describe("Test FlowColdStorageProxy contract", () => {
     const amount = 2.0;
 
     const sigHex = sigDataHex(nonce, amount, FlowAccount);
-    const args = [ProxyAccountB, FlowAccount, amount, nonce, sigHex];
+    const args = [ProxyAccountB, FlowAccount, amount, nonce.toString(), sigHex];
     const signers = [ProxyPayer];
     const [tx, error] = await sendTransaction({ code: scriptTransferTemplate, signers, args });
 
@@ -490,7 +491,7 @@ describe("Test FlowColdStorageProxy contract", () => {
     const amount = 3.0;
 
     const sigHex = sigDataHex(nonce, amount, ProxyAccountB);
-    const args = [ProxyAccountA, ProxyAccountB, amount, nonce, sigHex];
+    const args = [ProxyAccountA, ProxyAccountB, amount, nonce.toString(), sigHex];
     const signers = [ProxyPayer];
     const [tx, error] = await sendTransaction({ code: scriptTransferTemplate, signers, args });
 
@@ -603,7 +604,7 @@ describe("Test FlowColdStorageProxy contract", () => {
     const amount = 1.0;
 
     const sigHex = sigDataHex(invalidNonce, amount, ProxyAccountB);
-    const args = [ProxyAccountA, ProxyAccountB, amount, invalidNonce, sigHex];
+    const args = [ProxyAccountA, ProxyAccountB, amount, invalidNonce.toString(), sigHex];
     const signers = [ProxyPayer];
     const [tx, error] = await sendTransaction({ code: scriptTransferTemplate, signers, args });
 
@@ -642,7 +643,7 @@ describe("Test FlowColdStorageProxy contract", () => {
     const amount = 1.0;
 
     const sigHex = sigDataHex(invalidNonce, amount, ProxyAccountB);
-    const args = [ProxyAccountA, ProxyAccountB, amount, nonce, sigHex];
+    const args = [ProxyAccountA, ProxyAccountB, amount, nonce.toString(), sigHex];
     const signers = [ProxyPayer];
     const [tx, error] = await sendTransaction({ code: scriptTransferTemplate, signers, args });
 
@@ -680,7 +681,7 @@ describe("Test FlowColdStorageProxy contract", () => {
     const amount = 1.0;
 
     const sigHex = invalidSigDataHex(nonce, amount, ProxyAccountB);
-    const args = [ProxyAccountA, ProxyAccountB, amount, nonce, sigHex];
+    const args = [ProxyAccountA, ProxyAccountB, amount, nonce.toString(), sigHex];
     const signers = [ProxyPayer];
     const [tx, error] = await sendTransaction({ code: scriptTransferTemplate, signers, args });
 
@@ -701,7 +702,7 @@ describe("Test FlowColdStorageProxy contract", () => {
 
     const keyIndex = parseInt(len, 10) - 1;
 
-    const argsIndex = [ProxyDeployAccount, keyIndex];
+    const argsIndex = [ProxyDeployAccount, keyIndex.toString()];
     const [key, errIndex] = await executeScript({
       name: "get-key-index",
       args: argsIndex
@@ -727,7 +728,7 @@ describe("Test FlowColdStorageProxy contract", () => {
 
     const keyIndex = parseInt(len, 10) - 1;
 
-    const argsKey = [ProxyDeployAccount, keyIndex];
+    const argsKey = [ProxyDeployAccount, keyIndex.toString()];
     const [key, errKey] = await executeScript({
       name: "get-public-key",
       args: argsKey
@@ -751,7 +752,7 @@ describe("Test FlowColdStorageProxy contract", () => {
 
     const keyIndex = parseInt(len, 10) - 1;
 
-    const argsStatus = [ProxyDeployAccount, keyIndex];
+    const argsStatus = [ProxyDeployAccount, keyIndex.toString()];
     const [status, errStatus] = await executeScript({
       name: "get-revoke-status",
       args: argsStatus
@@ -773,11 +774,11 @@ describe("Test FlowColdStorageProxy contract", () => {
 
     `);
 
-    const args = [true, name, data, prevKeyIndex, publicKey3, keyMessage, keySignature, "keyid123"];
+    const args = [true, name, data, prevKeyIndex.toString(), publicKey3, keyMessage, keySignature, "keyid123"];
     const signers = [{
       addr: address,
       privateKey: privateKey3,
-      hashAlgorithm: "secp256k1",
+      signatureAlgorithm: SignatureAlgorithm.ECDSA_secp256k1,
       keyId: prevKeyIndex,
     }];
     const [tx, err] = await sendTransaction({ name: "proxy-contract-update", signers, args });
@@ -793,11 +794,11 @@ describe("Test FlowColdStorageProxy contract", () => {
 
     const data = fs.readFileSync("cadence/contracts/FlowColdStorageProxy.cdc");
 
-    const args = [true, name, data.toString(), prevKeyIndex, publicKey3, keyMessage + "x", keySignature, "keyid123"];
+    const args = [true, name, data.toString(), prevKeyIndex.toString(), publicKey3, keyMessage + "x", keySignature, "keyid123"];
     const signers = [{
       addr: ProxyDeployAccount,
       privateKey: privateKey3,
-      hashAlgorithm: "secp256k1",
+      signatureAlgorithm: SignatureAlgorithm.ECDSA_secp256k1,
       keyId: prevKeyIndex,
     }];
 
@@ -814,11 +815,11 @@ describe("Test FlowColdStorageProxy contract", () => {
 
     const data = fs.readFileSync("cadence/contracts/FlowColdStorageProxy.cdc");
 
-    const args = [true, name, data.toString(), prevKeyIndex - 1, publicKey3, keyMessage, keySignature, "keyid123"];
+    const args = [true, name, data.toString(), (prevKeyIndex - 1).toString(), publicKey3, keyMessage, keySignature, "keyid123"];
     const signers = [{
       addr: ProxyDeployAccount,
       privateKey: privateKey3,
-      hashAlgorithm: "secp256k1",
+      signatureAlgorithm: SignatureAlgorithm.ECDSA_secp256k1,
       keyId: prevKeyIndex,
     }];
 
@@ -835,11 +836,11 @@ describe("Test FlowColdStorageProxy contract", () => {
 
     const data = fs.readFileSync("cadence/contracts/FlowColdStorageProxy.cdc");
 
-    const args = [true, name, data.toString(), prevKeyIndex + 1, publicKey3, keyMessage, keySignature, "keyid123"];
+    const args = [true, name, data.toString(), (prevKeyIndex + 1).toString(), publicKey3, keyMessage, keySignature, "keyid123"];
     const signers = [{
       addr: ProxyDeployAccount,
       privateKey: privateKey3,
-      hashAlgorithm: "secp256k1",
+      signatureAlgorithm: SignatureAlgorithm.ECDSA_secp256k1,
       keyId: prevKeyIndex,
     }];
 
@@ -863,7 +864,7 @@ describe("Test FlowColdStorageProxy contract", () => {
 
     const keyIndex = parseInt(len, 10) - 1;
 
-    const argsStatus = [ProxyDeployAccount, keyIndex - 1];
+    const argsStatus = [ProxyDeployAccount, (keyIndex - 1).toString()];
     const [status, errStatus] = await executeScript({
       name: "get-revoke-status",
       args: argsStatus
@@ -886,7 +887,7 @@ describe("Test FlowColdStorageProxy contract", () => {
 
     const keyIndexValue = parseInt(len, 10) - 1;
 
-    const argsIndex = [ProxyDeployAccount, keyIndexValue];
+    const argsIndex = [ProxyDeployAccount, keyIndexValue.toString()];
     const [keyIndex, errIndex] = await executeScript({
       name: "get-key-index",
       args: argsIndex
@@ -911,7 +912,7 @@ describe("Test FlowColdStorageProxy contract", () => {
 
     const keyIndex = parseInt(len, 10) - 1;
 
-    const argsKey = [ProxyDeployAccount, keyIndex];
+    const argsKey = [ProxyDeployAccount, keyIndex.toString()];
     const [key, errKey] = await executeScript({
       name: "get-public-key",
       args: argsKey
@@ -970,11 +971,11 @@ describe("Test FlowColdStorageProxy contract", () => {
 
     `);
 
-    const args = [true, name, data, prevKeyIndex, publicKey3, keyMessage, keySignature, "keyid123"];
+    const args = [true, name, data, prevKeyIndex.toString(), publicKey3, keyMessage, keySignature, "keyid123"];
     const signers = [{
       addr: address,
       privateKey: privateKey3,
-      hashAlgorithm: "secp256k1",
+      signatureAlgorithm: SignatureAlgorithm.ECDSA_secp256k1,
       keyId: prevKeyIndex,
     }];
 
