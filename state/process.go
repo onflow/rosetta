@@ -984,6 +984,9 @@ func useSlowPath(err error) bool {
 	case codes.Internal:
 		// NOTE(tav): Access API servers sometimes return an Internal error that
 		// wraps around Unimplemented errors from upstream Execution Nodes.
+		if strings.Contains(err.Error(), "ResourceExhausted") {
+			return true
+		}
 		return strings.Contains(err.Error(), "Unimplemented")
 	case codes.ResourceExhausted:
 		// NOTE(tav): The response size for the batched APIs may sometimes
