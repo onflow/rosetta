@@ -107,7 +107,7 @@ func deriveBlockHash(spork *config.Spork, hdr flowHeader) flow.Identifier {
 	switch spork.Version {
 	case 1, 2:
 		return deriveBlockHashV1(hdr)
-	case 3:
+	case 3, 4:
 		return deriveBlockHashV3(hdr)
 	}
 	panic("unreachable code")
@@ -265,7 +265,7 @@ func deriveExecutionResult(spork *config.Spork, exec flowExecutionResult) flow.I
 	switch spork.Version {
 	case 1:
 		return deriveExecutionResultV1(exec)
-	case 2, 3:
+	case 2, 3, 4:
 		return deriveExecutionResultV2(exec)
 	}
 	panic("unreachable code")
