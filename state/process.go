@@ -38,6 +38,12 @@ type processBlockState struct {
 	txn            *model.IndexedTransaction
 	proxyDeposits  map[string]uint64
 	proxyTransfers []*proxyTransfer
+	fees           uint64
+	deposits       map[string]uint64
+	withdrawals    map[string]uint64
+	contOuter      bool
+	contEvtloop    bool
+	contEvtloop2   bool
 }
 
 func (i *Indexer) processBlock(rctx context.Context, spork *config.Spork, height uint64, hash []byte) {
@@ -447,176 +453,59 @@ outer:
 					newCounter:    newCounter,
 					txn:           txn,
 					proxyDeposits: proxyDeposits,
+					fees:          fees,
+					deposits:      deposits,
+					withdrawals:   withdrawals,
 				}
 			evtloop:
 				for _, evt := range txnResult.Events {
+					state.contOuter = false
+					state.contEvtloop = false
 					switch evt.Type {
 					case "flow.AccountCreated":
-						state, contOuter, _ := i.ProcessAccountCreated(evt, state)
-						skipCache = state.skipCache
-						if contOuter {
-							continue outer
-						}
-						accountKeys = state.accountKeys
-						addrs = state.addrs
-						newAccounts = state.newAccounts
-						newCounter = state.newCounter
-
+						i.ProcessAccountCreated(evt, state)
 					case i.typProxyCreated:
-						state, contOuter, contEvt := i.ProcessProxyCreated(evt, state)
-						skipCache = state.skipCache
-						if contOuter {
-							continue outer
-						}
-						if contEvt {
-							continue evtloop
-						}
-						accountKeys = state.accountKeys
-						newAccounts = state.newAccounts
-
+						i.ProcessProxyCreated(evt, state)
 					case i.typProxyDeposited:
-						state, contOuter, _ := i.ProcessProxyDeposit(evt, state)
-						skipCache = state.skipCache
-						if contOuter {
-							continue outer
-						}
-						proxyDeposits = state.proxyDeposits
-
+						i.ProcessProxyDeposit(evt, state)
 					case i.typProxyTransferred:
-						state, contOuter, _ := i.ProcessProxyTransfer(evt, state)
-						skipCache = state.skipCache
-						if contOuter {
-							continue outer
-						}
-						proxyTransfers = state.proxyTransfers
+						i.ProcessProxyTransfer(evt, state)
 					}
+					skipCache = state.skipCache
+					if state.contOuter {
+						continue outer
+					}
+					if state.contEvtloop {
+						continue evtloop
+					}
+					accountKeys = state.accountKeys
+					addrs = state.addrs
+					newAccounts = state.newAccounts
+					newCounter = state.newCounter
+					proxyDeposits = state.proxyDeposits
+					proxyTransfers = state.proxyTransfers
 				}
 			evtloop2:
 				for _, evt := range txnResult.Events {
+					state.contOuter = false
+					state.contEvtloop2 = false
 					switch evt.Type {
 					case i.typTokensDeposited:
-						fields := decodeEvent("FlowToken.TokensDeposited", evt, hash, height)
-						if fields == nil {
-							skipCache = true
-							continue outer
-						}
-						if len(fields) != 2 {
-							log.Errorf(
-								"Found FlowToken.TokensDeposited event with %d fields in transaction %x in block %x at height %d",
-								len(fields), txnHash, hash, height,
-							)
-							skipCache = true
-							continue outer
-						}
-						amount, ok := fields[0].(uint64)
-						if !ok {
-							log.Errorf(
-								"Unable to load amount from FlowToken.TokensDeposited event in transaction %x in block %x at height %d",
-								txnHash, hash, height,
-							)
-							skipCache = true
-							continue outer
-						}
-						if fields[1] == nil {
-							log.Warnf(
-								"Ignoring FlowToken.TokensDeposited event with a nil address in transaction %x in block %x at height %d",
-								txnHash, hash, height,
-							)
-							txn.Events = append(txn.Events, &model.TransferEvent{
-								Amount: amount,
-								Type:   model.TransferType_DEPOSIT,
-							})
-							continue evtloop2
-						}
-						receiver, ok := fields[1].([8]byte)
-						if !ok {
-							log.Errorf(
-								"Unable to load receiver address from FlowToken.TokensDeposited event in transaction %x in block %x at height %d",
-								txnHash, hash, height,
-							)
-							skipCache = true
-							continue outer
-						}
-						txn.Events = append(txn.Events, &model.TransferEvent{
-							Amount:   amount,
-							Receiver: receiver[:],
-							Type:     model.TransferType_DEPOSIT,
-						})
-						if bytes.Equal(receiver[:], i.feeAddr) {
-							// NOTE(tav): When the deposit is to the fee
-							// address, just increment the fee amount.
-							fees += amount
-						} else if i.isTracked(receiver[:], newAccounts) && !i.isProxy(receiver[:], newAccounts) {
-							// NOTE(tav): We only care about deposits to tracked
-							// accounts, as long as they are not one of our
-							// proxy accounts.
-							//
-							// In proxy accounts, deposits to the
-							// FlowColdStorageProxy Vault, as opposed to the
-							// default FlowToken Vault, should have already been
-							// captured by FlowColdStorageProxy.Deposited
-							// events.
-							deposits[string(receiver[:])] += amount
-						}
+						i.ProcessTokensDeposit(evt, state)
 					case i.typTokensWithdrawn:
-						fields := decodeEvent("FlowToken.TokensWithdrawn", evt, hash, height)
-						if fields == nil {
-							skipCache = true
-							continue outer
-						}
-						if len(fields) != 2 {
-							log.Errorf(
-								"Found FlowToken.TokensWithdrawn event with %d fields in transaction %x in block %x at height %d",
-								len(fields), txnHash, hash, height,
-							)
-							skipCache = true
-							continue outer
-						}
-						amount, ok := fields[0].(uint64)
-						if !ok {
-							log.Errorf(
-								"Unable to load amount from FlowToken.TokensWithdrawn event in transaction %x in block %x at height %d",
-								txnHash, hash, height,
-							)
-							skipCache = true
-							continue outer
-						}
-						if fields[1] == nil {
-							log.Warnf(
-								"Ignoring FlowToken.TokensWithdrawn event with a nil address in transaction %x in block %x at height %d",
-								txnHash, hash, height,
-							)
-							txn.Events = append(txn.Events, &model.TransferEvent{
-								Amount: amount,
-								Type:   model.TransferType_WITHDRAWAL,
-							})
-							continue evtloop2
-						}
-						sender, ok := fields[1].([8]byte)
-						if !ok {
-							log.Errorf(
-								"Unable to load sender address from FlowToken.TokensWithdrawn event in transaction %x in block %x at height %d",
-								txnHash, hash, height,
-							)
-							skipCache = true
-							continue outer
-						}
-						txn.Events = append(txn.Events, &model.TransferEvent{
-							Amount: amount,
-							Sender: sender[:],
-							Type:   model.TransferType_WITHDRAWAL,
-						})
-						// NOTE(tav): We only care about withdrawals from our
-						// tracked accounts, as long as they are not one of our
-						// proxy accounts.
-						//
-						// In proxy accounts, transfers from the
-						// FlowColdStorageProxy Vault should have already been
-						// captured by FlowColdStorageProxy.Transferred events.
-						if i.isTracked(sender[:], newAccounts) && !i.isProxy(sender[:], newAccounts) {
-							withdrawals[string(sender[:])] += amount
-						}
+						i.ProcessTokensWithdrawn(evt, state)
 					}
+					skipCache = state.skipCache
+					txn.Events = state.txn.Events
+					if state.contOuter {
+						continue outer
+					}
+					if state.contEvtloop2 {
+						continue evtloop2
+					}
+					fees = state.fees
+					deposits = state.withdrawals
+					withdrawals = state.withdrawals
 				}
 				// Create operations for the creation of new accounts, including
 				// proxy accounts.
@@ -806,12 +695,12 @@ outer:
 	}
 }
 
-// ProcessAccountCreated returns state, a continue to outer bool, a continue to evtloop2 bool
-func (i *Indexer) ProcessAccountCreated(evt *entities.Event, state *processBlockState) (*processBlockState, bool, bool) {
+func (i *Indexer) ProcessAccountCreated(evt *entities.Event, state *processBlockState) {
 	fields := decodeEvent("flow.AccountCreated", evt, state.hash, state.height)
 	if fields == nil {
 		state.skipCache = true
-		return state, true, false
+		state.contOuter = true
+		return
 	}
 	if len(fields) != 1 {
 		log.Errorf(
@@ -819,7 +708,8 @@ func (i *Indexer) ProcessAccountCreated(evt *entities.Event, state *processBlock
 			len(fields), state.txnHash, state.hash, state.height,
 		)
 		state.skipCache = true
-		return state, true, false
+		state.contOuter = true
+		return
 	}
 	addr, ok := fields[0].([8]byte)
 	if !ok {
@@ -828,7 +718,8 @@ func (i *Indexer) ProcessAccountCreated(evt *entities.Event, state *processBlock
 			state.txnHash, state.hash, state.height,
 		)
 		state.skipCache = true
-		return state, true, false
+		state.contOuter = true
+		return
 	}
 	// NOTE(tav): We only care about new accounts if they
 	// are one of our root originators, or are created by
@@ -840,23 +731,23 @@ func (i *Indexer) ProcessAccountCreated(evt *entities.Event, state *processBlock
 		state.newAccounts[string(addr[:])] = false
 		state.newCounter++
 	}
-	return state, false, false
 }
 
-// ProcessProxyCreated returns state, a continue to outer bool, a continue to evtloop2 bool
-func (i *Indexer) ProcessProxyCreated(evt *entities.Event, state *processBlockState) (*processBlockState, bool, bool) {
+func (i *Indexer) ProcessProxyCreated(evt *entities.Event, state *processBlockState) {
 	// NOTE(tav): Since FlowColdStorageProxy.Created events
 	// are emitted after flow.AccountCreated, we can process
 	// it within the same loop.
 	fields := decodeEvent("FlowColdStorageProxy.Created", evt, state.hash, state.height)
 	if fields == nil {
 		state.skipCache = true
-		return state, true, false
+		state.contOuter = true
+		return
 	}
 	// NOTE(tav): We only care about new proxy accounts if
 	// they are created by one of our tracked accounts.
 	if !i.isTracked(state.payer, state.newAccounts) {
-		return state, false, true
+		state.contEvtloop = true
+		return
 	}
 	if len(state.accountKeys) == 0 {
 		log.Errorf(
@@ -864,7 +755,8 @@ func (i *Indexer) ProcessProxyCreated(evt *entities.Event, state *processBlockSt
 			state.txnHash, state.hash, state.height,
 		)
 		state.skipCache = true
-		return state, true, false
+		state.contOuter = true
+		return
 	}
 	if len(fields) != 2 {
 		log.Errorf(
@@ -872,7 +764,8 @@ func (i *Indexer) ProcessProxyCreated(evt *entities.Event, state *processBlockSt
 			len(fields), state.txnHash, state.hash, state.height,
 		)
 		state.skipCache = true
-		return state, true, false
+		state.contOuter = true
+		return
 	}
 	addr, ok := fields[0].([8]byte)
 	if !ok {
@@ -881,7 +774,8 @@ func (i *Indexer) ProcessProxyCreated(evt *entities.Event, state *processBlockSt
 			state.txnHash, state.hash, state.height,
 		)
 		state.skipCache = true
-		return state, true, false
+		state.contOuter = true
+		return
 	}
 	_, ok = state.accountKeys[string(addr[:])]
 	if !ok {
@@ -890,7 +784,8 @@ func (i *Indexer) ProcessProxyCreated(evt *entities.Event, state *processBlockSt
 			addr, state.txnHash, state.hash, state.height,
 		)
 		state.skipCache = true
-		return state, true, false
+		state.contOuter = true
+		return
 	}
 	publicKey, ok := fields[1].(string)
 	if !ok {
@@ -899,7 +794,8 @@ func (i *Indexer) ProcessProxyCreated(evt *entities.Event, state *processBlockSt
 			state.txnHash, state.hash, state.height,
 		)
 		state.skipCache = true
-		return state, true, false
+		state.contOuter = true
+		return
 	}
 	uncompressed, err := hex.DecodeString(publicKey)
 	if err != nil {
@@ -908,7 +804,8 @@ func (i *Indexer) ProcessProxyCreated(evt *entities.Event, state *processBlockSt
 			state.txnHash, state.hash, state.height, err,
 		)
 		state.skipCache = true
-		return state, true, false
+		state.contOuter = true
+		return
 	}
 	compressed, err := crypto.ConvertFlowPublicKey(uncompressed)
 	if err != nil {
@@ -917,15 +814,14 @@ func (i *Indexer) ProcessProxyCreated(evt *entities.Event, state *processBlockSt
 			state.txnHash, state.hash, state.height, err,
 		)
 		state.skipCache = true
-		return state, true, false
+		state.contOuter = true
+		return
 	}
 	state.accountKeys[string(addr[:])] = compressed
 	state.newAccounts[string(addr[:])] = true
-	return state, false, false
 }
 
-// ProcessProxyDeposit returns state, a continue to outer bool, a continue to evtloop2 bool
-func (i *Indexer) ProcessProxyDeposit(evt *entities.Event, state *processBlockState) (*processBlockState, bool, bool) {
+func (i *Indexer) ProcessProxyDeposit(evt *entities.Event, state *processBlockState) {
 	// NOTE(tav): For all proxy accounts originated by us,
 	// we will only ever make deposits to the proxy
 	// account's vault once we've found the account address.
@@ -934,7 +830,8 @@ func (i *Indexer) ProcessProxyDeposit(evt *entities.Event, state *processBlockSt
 	fields := decodeEvent("FlowColdStorageProxy.Deposited", evt, state.hash, state.height)
 	if fields == nil {
 		state.skipCache = true
-		return state, true, false
+		state.contOuter = true
+		return
 	}
 	if len(fields) != 2 {
 		log.Errorf(
@@ -942,7 +839,8 @@ func (i *Indexer) ProcessProxyDeposit(evt *entities.Event, state *processBlockSt
 			len(fields), state.txnHash, state.hash, state.height,
 		)
 		state.skipCache = true
-		return state, true, false
+		state.contOuter = true
+		return
 	}
 	addr, ok := fields[0].([8]byte)
 	if !ok {
@@ -951,7 +849,8 @@ func (i *Indexer) ProcessProxyDeposit(evt *entities.Event, state *processBlockSt
 			state.txnHash, state.hash, state.height,
 		)
 		state.skipCache = true
-		return state, true, false
+		state.contOuter = true
+		return
 	}
 	amount, ok := fields[1].(uint64)
 	if !ok {
@@ -960,7 +859,8 @@ func (i *Indexer) ProcessProxyDeposit(evt *entities.Event, state *processBlockSt
 			state.txnHash, state.hash, state.height,
 		)
 		state.skipCache = true
-		return state, true, false
+		state.contOuter = true
+		return
 	}
 	state.txn.Events = append(state.txn.Events, &model.TransferEvent{
 		Amount:   amount,
@@ -972,11 +872,9 @@ func (i *Indexer) ProcessProxyDeposit(evt *entities.Event, state *processBlockSt
 	if i.isProxy(addr[:], state.newAccounts) {
 		state.proxyDeposits[string(addr[:])] += amount
 	}
-	return state, false, false
 }
 
-// ProcessProxyTransfer returns state, a continue to outer bool, a continue to evtloop2 bool
-func (i *Indexer) ProcessProxyTransfer(evt *entities.Event, state *processBlockState) (*processBlockState, bool, bool) {
+func (i *Indexer) ProcessProxyTransfer(evt *entities.Event, state *processBlockState) {
 	// NOTE(tav): For all proxy accounts originated by us,
 	// we will only ever make transfers once we've found the
 	// account address. Therefore, we can process these
@@ -984,7 +882,8 @@ func (i *Indexer) ProcessProxyTransfer(evt *entities.Event, state *processBlockS
 	fields := decodeEvent("FlowColdStorageProxy.Transferred", evt, state.hash, state.height)
 	if fields == nil {
 		state.skipCache = true
-		return state, true, false
+		state.contOuter = true
+		return
 	}
 	if len(fields) != 3 {
 		log.Errorf(
@@ -992,7 +891,8 @@ func (i *Indexer) ProcessProxyTransfer(evt *entities.Event, state *processBlockS
 			len(fields), state.txnHash, state.hash, state.height,
 		)
 		state.skipCache = true
-		return state, true, false
+		state.contOuter = true
+		return
 	}
 	sender, ok := fields[0].([8]byte)
 	if !ok {
@@ -1001,7 +901,8 @@ func (i *Indexer) ProcessProxyTransfer(evt *entities.Event, state *processBlockS
 			state.txnHash, state.hash, state.height,
 		)
 		state.skipCache = true
-		return state, true, false
+		state.contOuter = true
+		return
 	}
 	receiver, ok := fields[1].([8]byte)
 	if !ok {
@@ -1010,7 +911,8 @@ func (i *Indexer) ProcessProxyTransfer(evt *entities.Event, state *processBlockS
 			state.txnHash, state.hash, state.height,
 		)
 		state.skipCache = true
-		return state, true, false
+		state.contOuter = true
+		return
 	}
 	amount, ok := fields[2].(uint64)
 	if !ok {
@@ -1019,7 +921,8 @@ func (i *Indexer) ProcessProxyTransfer(evt *entities.Event, state *processBlockS
 			state.txnHash, state.hash, state.height,
 		)
 		state.skipCache = true
-		return state, true, false
+		state.contOuter = true
+		return
 	}
 	state.txn.Events = append(state.txn.Events, &model.TransferEvent{
 		Amount:   amount,
@@ -1043,7 +946,141 @@ func (i *Indexer) ProcessProxyTransfer(evt *entities.Event, state *processBlockS
 			})
 		}
 	}
-	return state, false, false
+}
+
+func (i *Indexer) ProcessTokensDeposit(evt *entities.Event, state *processBlockState) {
+	fields := decodeEvent("FlowToken.TokensDeposited", evt, state.hash, state.height)
+	if fields == nil {
+		state.skipCache = true
+		state.contOuter = true
+		return
+	}
+	if len(fields) != 2 {
+		log.Errorf(
+			"Found FlowToken.TokensDeposited event with %d fields in transaction %x in block %x at height %d",
+			len(fields), state.txnHash, state.hash, state.height,
+		)
+		state.skipCache = true
+		state.contOuter = true
+		return
+	}
+	amount, ok := fields[0].(uint64)
+	if !ok {
+		log.Errorf(
+			"Unable to load amount from FlowToken.TokensDeposited event in transaction %x in block %x at height %d",
+			state.txnHash, state.hash, state.height,
+		)
+		state.skipCache = true
+		state.contOuter = true
+		return
+	}
+	if fields[1] == nil {
+		log.Warnf(
+			"Ignoring FlowToken.TokensDeposited event with a nil address in transaction %x in block %x at height %d",
+			state.txnHash, state.hash, state.height,
+		)
+		state.txn.Events = append(state.txn.Events, &model.TransferEvent{
+			Amount: amount,
+			Type:   model.TransferType_DEPOSIT,
+		})
+		state.contEvtloop2 = true
+		return
+	}
+	receiver, ok := fields[1].([8]byte)
+	if !ok {
+		log.Errorf(
+			"Unable to load receiver address from FlowToken.TokensDeposited event in transaction %x in block %x at height %d",
+			state.txnHash, state.hash, state.height,
+		)
+		state.skipCache = true
+		state.contOuter = true
+		return
+	}
+	state.txn.Events = append(state.txn.Events, &model.TransferEvent{
+		Amount:   amount,
+		Receiver: receiver[:],
+		Type:     model.TransferType_DEPOSIT,
+	})
+	if bytes.Equal(receiver[:], i.feeAddr) {
+		// NOTE(tav): When the deposit is to the fee
+		// address, just increment the fee amount.
+		state.fees += amount
+	} else if i.isTracked(receiver[:], state.newAccounts) && !i.isProxy(receiver[:], state.newAccounts) {
+		// NOTE(tav): We only care about deposits to tracked
+		// accounts, as long as they are not one of our
+		// proxy accounts.
+		//
+		// In proxy accounts, deposits to the
+		// FlowColdStorageProxy Vault, as opposed to the
+		// default FlowToken Vault, should have already been
+		// captured by FlowColdStorageProxy.Deposited
+		// events.
+		state.deposits[string(receiver[:])] += amount
+	}
+}
+
+func (i *Indexer) ProcessTokensWithdrawn(evt *entities.Event, state *processBlockState) {
+	fields := decodeEvent("FlowToken.TokensWithdrawn", evt, state.hash, state.height)
+	if fields == nil {
+		state.skipCache = true
+		state.contOuter = true
+		return
+	}
+	if len(fields) != 2 {
+		log.Errorf(
+			"Found FlowToken.TokensWithdrawn event with %d fields in transaction %x in block %x at height %d",
+			len(fields), state.txnHash, state.hash, state.height,
+		)
+		state.skipCache = true
+		state.contOuter = true
+		return
+	}
+	amount, ok := fields[0].(uint64)
+	if !ok {
+		log.Errorf(
+			"Unable to load amount from FlowToken.TokensWithdrawn event in transaction %x in block %x at height %d",
+			state.txnHash, state.hash, state.height,
+		)
+		state.skipCache = true
+		state.contOuter = true
+		return
+	}
+	if fields[1] == nil {
+		log.Warnf(
+			"Ignoring FlowToken.TokensWithdrawn event with a nil address in transaction %x in block %x at height %d",
+			state.txnHash, state.hash, state.height,
+		)
+		state.txn.Events = append(state.txn.Events, &model.TransferEvent{
+			Amount: amount,
+			Type:   model.TransferType_WITHDRAWAL,
+		})
+		state.contEvtloop2 = true
+		return
+	}
+	sender, ok := fields[1].([8]byte)
+	if !ok {
+		log.Errorf(
+			"Unable to load sender address from FlowToken.TokensWithdrawn event in transaction %x in block %x at height %d",
+			state.txnHash, state.hash, state.height,
+		)
+		state.skipCache = true
+		state.contOuter = true
+	}
+	state.txn.Events = append(state.txn.Events, &model.TransferEvent{
+		Amount: amount,
+		Sender: sender[:],
+		Type:   model.TransferType_WITHDRAWAL,
+	})
+	// NOTE(tav): We only care about withdrawals from our
+	// tracked accounts, as long as they are not one of our
+	// proxy accounts.
+	//
+	// In proxy accounts, transfers from the
+	// FlowColdStorageProxy Vault should have already been
+	// captured by FlowColdStorageProxy.Transferred events.
+	if i.isTracked(sender[:], state.newAccounts) && !i.isProxy(sender[:], state.newAccounts) {
+		state.withdrawals[string(sender[:])] += amount
+	}
 }
 
 type collectionData struct {
