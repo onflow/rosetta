@@ -4,6 +4,7 @@ from threading import Thread
 import os
 import csv
 import requests
+import time
 
 
 ######################################################################################
@@ -409,15 +410,19 @@ def main():
         init_flow_json()
         create_originator()
         create_account()
-        setup_rosetta()
+    setup_rosetta()
 
     _, _, _, address = get_account_keys("originator")
-    rosetta_create_account(address, "originator")
-    rosetta_create_proxy_account(address, "originator")
+    rosetta_create_account(address, "originator", 0)
     _, _, _, new_address = get_account_keys("create_account")
-    rosetta_transfer(address, new_address, 50)
+    rosetta_create_proxy_account(address, "originator", 0)
     _, _, _, new_proxy_address = get_account_keys("create_proxy_account")
+
+    rosetta_transfer(address, new_address, 50)
+    time.sleep(30) ## Hacky fix to not check nonce
     rosetta_transfer(address, new_proxy_address, 50)
+    time.sleep(30)
+
     _, _, _, flow_account_address = get_account_keys("flow-account")
     rosetta_proxy_transfer(new_proxy_address, flow_account_address, address, 10)
 
