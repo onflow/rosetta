@@ -139,7 +139,7 @@ def rosetta_create_account(root_originator, root_originator_name="originator", i
     preprocess_response = preprocess_transaction(root_originator, operations)
     metadata_response = metadata_transaction(preprocess_response["options"])
     payloads_response = payloads_transaction(operations, metadata_response["metadata"]["protobuf"])
-    flow_key, rosetta_key, private_key, _ = get_account_keys("originator")
+    flow_key, rosetta_key, private_key, _ = get_account_keys(root_originator_name)
     hex_bytes = payloads_response["payloads"][0]["hex_bytes"]
     unsigned_tx = payloads_response["unsigned_transaction"]
     sign_tx_cmd = "go run cmd/sign/sign.go " + private_key + " " + hex_bytes
@@ -149,6 +149,7 @@ def rosetta_create_account(root_originator, root_originator_name="originator", i
     submit_transaction_response = submit_transaction(combine_response["signed_transaction"])
     tx_hash = submit_transaction_response["transaction_identifier"]["hash"]
     ## TODO: Figure out why flow cli gets stuck on "Waiting for transaction to be sealed..." despite explorer showing sealed
+    print("Look for the account that has Received 0.00100000 Flow")
     flow_address = input("What is the flow address generated? (https://testnet.flowscan.org/transaction/" + tx_hash + ")\n")
     with open('account-keys.csv', "a+") as file_object:
         file_object.write("create_account," + public_flow_key + "," + public_rosetta_key + "," + new_private_key + "," + flow_address + "\n")
@@ -169,7 +170,7 @@ def rosetta_create_proxy_account(root_originator, root_originator_name="originat
     preprocess_response = preprocess_transaction(root_originator, operations)
     metadata_response = metadata_transaction(preprocess_response["options"])
     payloads_response = payloads_transaction(operations, metadata_response["metadata"]["protobuf"])
-    flow_key, rosetta_key, private_key, _ = get_account_keys("originator")
+    flow_key, rosetta_key, private_key, _ = get_account_keys(root_originator_name)
     hex_bytes = payloads_response["payloads"][0]["hex_bytes"]
     unsigned_tx = payloads_response["unsigned_transaction"]
     sign_tx_cmd = "go run cmd/sign/sign.go " + private_key + " " + hex_bytes
@@ -179,6 +180,7 @@ def rosetta_create_proxy_account(root_originator, root_originator_name="originat
     submit_transaction_response = submit_transaction(combine_response["signed_transaction"])
     tx_hash = submit_transaction_response["transaction_identifier"]["hash"]
     ## TODO: Figure out why flow cli gets stuck on "Waiting for transaction to be sealed..." despite explorer showing sealed
+    print("Look for the account that has Received 0.00100000 Flow")
     flow_address = input("What is the flow address generated? (https://testnet.flowscan.org/transaction/" + tx_hash + ")\n")
     with open('account-keys.csv', "a+") as file_object:
         file_object.write("create_proxy_account," + public_flow_key + "," + public_rosetta_key + "," + new_private_key + "," + flow_address + "\n")

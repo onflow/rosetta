@@ -3,8 +3,7 @@ import subprocess
 from threading import Thread
 import os
 import csv
-from urllib import request, parse
-import ast
+import requests
 
 ######################################################################################
 ### Constants
@@ -30,7 +29,7 @@ localnet_const = {
 	}
 }
 
-number_of_contract_accounts = 1
+number_of_contract_accounts = 2
 localnet_flags = ['-n', 'localnet']
 service_account_flags = ['--signer', 'localnet-service-account']
 rosetta_host_url = "http://127.0.0.1:8080"
@@ -65,7 +64,6 @@ def init_localnet():
     subprocess.run(start_localnet_cmd.split(" "), stdout=subprocess.PIPE)
 
 def init_flow_json():
-    # subprocess.run(['flow', 'init'], stdout=subprocess.PIPE)
     with open('flow.json', 'w') as json_file:
         json.dump(localnet_const, json_file, indent=4)
 
@@ -141,16 +139,12 @@ def get_account_keys(account):
         for line in search:
             if account in line:
                 keys = line.split(",")
-                return (keys[1], keys[2], keys[3])
+                return (keys[1], keys[2], keys[3], keys[4][:-1])
 
 def request_router(target_url, body):
-    req = request.Request(target_url, method="POST")
-    req.add_header('Content-Type', 'application/json')
-    data = json.dumps(body)
-    data = data.encode()
-    r = request.urlopen(req, data=data)
-    resp = r.read().decode('utf-8')
-    return ast.literal_eval(resp[:-1])
+    headers = {'Content-type': 'application/json'}
+    r = requests.post(target_url, data=json.dumps(body), headers=headers)
+    return r.json()
 
 
 ######################################################################################
@@ -158,8 +152,8 @@ def request_router(target_url, body):
 ######################################################################################
 
 
-def rosetta_create_account(root_originator, i=0):
-    public_flow_key, public_rosetta_key, private_key = gen_account()
+def rosetta_create_account(root_originator, root_originator_name="root-originator-account-1", i=0):
+    public_flow_key, public_rosetta_key, new_private_key = gen_account()
     transaction = "create_account"
     metadata = {"public_key": public_rosetta_key}
     operations = [
@@ -173,18 +167,25 @@ def rosetta_create_account(root_originator, i=0):
     ]
     preprocess_response = preprocess_transaction(root_originator, operations)
     metadata_response = metadata_transaction(preprocess_response["options"])
-    payloads_response = payloads_transaction(root_originator, operations, preprocess["options"])
-    flow_key, rosetta_key, private_key = get_private_key(root_originator)
-    hex_bytes = payloads[0]["hex_bytes"]
-    unsigned_tx = payloads["unsigned_transaction"]
+    payloads_response = payloads_transaction(operations, metadata_response["metadata"]["protobuf"])
+    flow_key, rosetta_key, private_key, _ = get_account_keys(root_originator_name)
+    hex_bytes = payloads_response["payloads"][0]["hex_bytes"]
+    unsigned_tx = payloads_response["unsigned_transaction"]
     sign_tx_cmd = "go run cmd/sign/sign.go " + private_key + " " + hex_bytes
     result = subprocess.run(sign_tx_cmd.split(" "), stdout=subprocess.PIPE)
-    signed_tx = result.stdout.decode('utf-8')
+    signed_tx = result.stdout.decode('utf-8')[:-1]
     combine_response = combine_transaction(unsigned_tx, root_originator, hex_bytes, rosetta_key, signed_tx)
-    submit_transaction(combine_response["signed_transaction"])
+    submit_transaction_response = submit_transaction(combine_response["signed_transaction"])
+    tx_hash = submit_transaction_response["transaction_identifier"]["hash"]
+    ## TODO: Convert to take input from flow cli
+    flow_address = input("What is the flow address generated? flow transactions get " + tx_hash + " + -n localnet)\n")
+    with open('account-keys.csv', "a+") as file_object:
+        account_name = root_originator_name + "-create_account,"
+        row_data = account_name + public_flow_key + "," + public_rosetta_key + "," + new_private_key + "," + flow_address + "\n"
+        file_object.write(row_data)
 
-def rosetta_create_proxy_account(root_originator, i=0):
-    public_flow_key, public_rosetta_key, private_key = gen_account()
+def rosetta_create_proxy_account(root_originator, root_originator_name="root-originator-account-1", i=0):
+    public_flow_key, public_rosetta_key, new_private_key = gen_account()
     transaction = "create_proxy_account"
     metadata = {"public_key": public_rosetta_key}
     operations = [
@@ -198,17 +199,24 @@ def rosetta_create_proxy_account(root_originator, i=0):
     ]
     preprocess_response = preprocess_transaction(root_originator, operations)
     metadata_response = metadata_transaction(preprocess_response["options"])
-    payloads_response = payloads_transaction(root_originator, operations, preprocess["options"])
-    flow_key, rosetta_key, private_key = get_private_key(root_originator)
-    hex_bytes = payloads[0]["hex_bytes"]
-    unsigned_tx = payloads["unsigned_transaction"]
+    payloads_response = payloads_transaction(operations, metadata_response["metadata"]["protobuf"])
+    flow_key, rosetta_key, private_key, _ = get_account_keys(root_originator_name)
+    hex_bytes = payloads_response["payloads"][0]["hex_bytes"]
+    unsigned_tx = payloads_response["unsigned_transaction"]
     sign_tx_cmd = "go run cmd/sign/sign.go " + private_key + " " + hex_bytes
     result = subprocess.run(sign_tx_cmd.split(" "), stdout=subprocess.PIPE)
-    signed_tx = result.stdout.decode('utf-8')
+    signed_tx = result.stdout.decode('utf-8')[:-1]
     combine_response = combine_transaction(unsigned_tx, root_originator, hex_bytes, rosetta_key, signed_tx)
-    submit_transaction(combine_response["signed_transaction"])
+    submit_transaction_response = submit_transaction(combine_response["signed_transaction"])
+    tx_hash = submit_transaction_response["transaction_identifier"]["hash"]
+    ## TODO: Convert to take input from flow cli
+    flow_address = input("What is the flow address generated? flow transactions get " + tx_hash + " + -n localnet)\n")
+    with open('account-keys.csv', "a+") as file_object:
+        account_name = root_originator_name + "-create_proxy_account,"
+        row_data = account_name + public_flow_key + "," + public_rosetta_key + "," + new_private_key + "," + flow_address + "\n"
+        file_object.write(row_data)
 
-def rosetta_transfer(originator, destination, amount):
+def rosetta_transfer(originator, destination, amount, i=0):
     transaction = "transfer"
     operations = [
         {
@@ -228,7 +236,7 @@ def rosetta_transfer(originator, destination, amount):
         }
         },
         {
-        "type": "transfer",
+        "type": transaction,
         "operation_identifier": {
             "index": i + 1
         },
@@ -251,17 +259,88 @@ def rosetta_transfer(originator, destination, amount):
     ]
     preprocess_response = preprocess_transaction(originator, operations)
     metadata_response = metadata_transaction(preprocess_response["options"])
-    payloads_response = payloads_transaction(root_originator, operations, preprocess["options"])
-    flow_key, rosetta_key, private_key = get_private_key(root_originator)
-    hex_bytes = payloads[0]["hex_bytes"]
-    unsigned_tx = payloads["unsigned_transaction"]
+    payloads_response = payloads_transaction(operations, metadata_response["metadata"]["protobuf"])
+    _, rosetta_key, private_key, _ = get_account_keys(originator)
+    hex_bytes = payloads_response["payloads"][0]["hex_bytes"]
+    unsigned_tx = payloads_response["unsigned_transaction"]
     sign_tx_cmd = "go run cmd/sign/sign.go " + private_key + " " + hex_bytes
     result = subprocess.run(sign_tx_cmd.split(" "), stdout=subprocess.PIPE)
-    signed_tx = result.stdout.decode('utf-8')
-    combine_response = combine_transaction(unsigned_tx, root_originator, hex_bytes, rosetta_key, signed_tx)
-    submit_transaction(combine_response["signed_transaction"])
+    signed_tx = result.stdout.decode('utf-8')[:-1]
+    combine_response = combine_transaction(unsigned_tx, originator, hex_bytes, rosetta_key, signed_tx)
+    submit_transaction_response = submit_transaction(combine_response["signed_transaction"])
+    tx_hash = submit_transaction_response["transaction_identifier"]["hash"]
+    print("Transferring " + str(amount) + " from " + originator + " to " + destination)
+    print("Transaction submitted... https://testnet.flowscan.org/transaction/" + tx_hash)
 
-def preprocess_transaction(root_originator, operations):
+def rosetta_proxy_transfer(originator, destination, originator_root, amount, i=0):
+    transaction = "proxy_transfer_inner"
+    operations = [
+        {
+        "type": transaction,
+        "operation_identifier": {
+            "index": i
+        },
+        "account": {
+            "address": originator
+        },
+        "amount": {
+            "currency": {
+            "decimals": 8,
+            "symbol": "FLOW"
+            },
+            "value": str(-1 * amount * 10 ** 7)
+        }
+        },
+        {
+        "type": transaction,
+        "operation_identifier": {
+            "index": i + 1
+        },
+        "related_operations": [
+            {
+            "index": i
+            }
+        ],
+        "account": {
+            "address": destination
+        },
+        "amount": {
+            "currency": {
+            "decimals": 8,
+            "symbol": "FLOW"
+            },
+            "value": str(amount * 10 ** 7)
+        }
+        }
+    ]
+    preprocess_response = preprocess_transaction(originator, operations)
+    metadata_response = metadata_transaction(preprocess_response["options"])
+    payloads_response = payloads_transaction(operations, metadata_response["metadata"]["protobuf"])
+    _, rosetta_key, private_key, _ = get_account_keys(originator)
+    hex_bytes = payloads_response["payloads"][0]["hex_bytes"]
+    unsigned_tx = payloads_response["unsigned_transaction"]
+    sign_tx_cmd = "go run cmd/sign/sign.go " + private_key + " " + hex_bytes
+    result = subprocess.run(sign_tx_cmd.split(" "), stdout=subprocess.PIPE)
+    signed_tx = result.stdout.decode('utf-8')[:-1]
+    combine_response = combine_transaction(unsigned_tx, originator, hex_bytes, rosetta_key, signed_tx)
+    combined_signed_tx = combine_response["signed_transaction"]
+
+    preprocess_response = preprocess_transaction(originator_root, operations, {"proxy_transfer_payload": combined_signed_tx})
+    metadata_response = metadata_transaction(preprocess_response["options"])
+    payloads_response = payloads_transaction(operations, metadata_response["metadata"]["protobuf"])
+    _, rosetta_key, private_key, _ = get_account_keys(originator_root)
+    hex_bytes = payloads_response["payloads"][0]["hex_bytes"]
+    unsigned_tx = payloads_response["unsigned_transaction"]
+    sign_tx_cmd = "go run cmd/sign/sign.go " + private_key + " " + hex_bytes
+    result = subprocess.run(sign_tx_cmd.split(" "), stdout=subprocess.PIPE)
+    signed_tx = result.stdout.decode('utf-8')[:-1]
+    combine_response = combine_transaction(unsigned_tx, originator_root, hex_bytes, rosetta_key, signed_tx)
+    submit_transaction_response = submit_transaction(combine_response["signed_transaction"])
+    tx_hash = submit_transaction_response["transaction_identifier"]["hash"]
+    print("Proxy transferring " + str(amount) + " from " + originator + " to " + destination + " proxied through " + originator_root)
+    print("Transaction submitted... https://testnet.flowscan.org/transaction/" + tx_hash)
+
+def preprocess_transaction(root_originator, operations, metadata=None):
     endpoint = "/construction/preprocess"
     target_url = rosetta_host_url + endpoint
     data = {
@@ -274,6 +353,9 @@ def preprocess_transaction(root_originator, operations):
             "payer": root_originator
         }
     }
+    if metadata:
+        for key in metadata:
+            data["metadata"][key] = metadata[key]
     return request_router(target_url, data)
 
 def metadata_transaction(options):
@@ -288,7 +370,7 @@ def metadata_transaction(options):
     }
     return request_router(target_url, data)
 
-def payloads_transaction(root_originator, operations, protobuf):
+def payloads_transaction(operations, protobuf):
     endpoint = "/construction/payloads"
     target_url = rosetta_host_url + endpoint
     data = {
@@ -297,7 +379,9 @@ def payloads_transaction(root_originator, operations, protobuf):
             "network": "localnet"
         },
         "operations": operations,
-        "metadata": protobuf
+        "metadata": {
+            "protobuf": protobuf
+        }
     }
     return request_router(target_url, data)
 
@@ -354,11 +438,22 @@ def main():
     init_localnet()
     init_flow_json()
     for i in range(1,number_of_contract_accounts+1):
-        account_str = "contract-account-" + str(i)
+        account_str = "root-originator-account-" + str(i)
         gen_contract_account(account_str)
         deploy_contracts(account_str)
     setup_rosetta()
     seed_contract_accounts()
+
+    _, _, _, root_address = get_account_keys("root-originator-account-1")
+    rosetta_create_account(root_address, "root-originator-account-1")
+    rosetta_create_proxy_account(root_address, "root-originator-account-1")
+    _, _, _, new_address = get_account_keys("root-originator-account-1-create_account")
+    rosetta_transfer(root_address, new_address, 50)
+    _, _, _, new_proxy_address = get_account_keys("root-originator-account-1-create_proxy_account")
+    rosetta_transfer(root_address, new_proxy_address, 50)
+    _, _, _, flow_account_address = get_account_keys("flow-account")
+    rosetta_proxy_transfer(new_proxy_address, flow_account_address, root_address, 10)
+
 
 if __name__ == "__main__":
     main()
