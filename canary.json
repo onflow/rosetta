@@ -7,9 +7,9 @@
   ],
   "contracts": {
       "flow_cold_storage_proxy": "0000000000000000",
-      "flow_fees": "912d5440f7e3769e",
-      "flow_token": "7e60df042a9c0868",
-      "fungible_token": "9a0766d93b6608b7"
+      "flow_fees": "e5a8b7f23e8b548f",
+      "flow_token": "0ae53cb6e3f42a79",
+      "fungible_token": "ee82856bf20e2aa6"
   },
   "data_dir": "/data",
   "network": "canary",
@@ -19,14 +19,14 @@
   "spork_seal_tolerance": 10000,
   "spork_synced_tolerance": 10,
   "sporks": {
-      "13": {
+      "28": {
           "access_nodes": [
               {
                   "address": "access.canary.nodes.onflow.org:9000"
               }
           ],
-          "root_block": 60624540,
-          "version": 2
+          "root_block": 8379391,
+          "version": 4
       }
   }
 }
