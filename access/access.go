@@ -559,6 +559,7 @@ func New(ctx context.Context, nodes []NodeConfig, store *cache.Store) Pool {
 	for _, node := range nodes {
 		opts := []grpc.DialOption{
 			grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(maxMessageSize)),
+			grpc.WithDefaultCallOptions(grpc.MaxCallSendMsgSize(maxMessageSize)),
 		}
 		if node.PublicKey == "" {
 			if node.TLS {
