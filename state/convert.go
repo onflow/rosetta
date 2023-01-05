@@ -503,5 +503,4 @@ type flowHeader struct {
 	View               uint64
 	LastViewTC         *flow.TimeoutCertificate
 	ParentView         uint64
-	BlockStatus        flow.BlockStatus
 }
