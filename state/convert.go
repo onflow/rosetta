@@ -109,6 +109,8 @@ func deriveBlockHash(spork *config.Spork, hdr flowHeader) flow.Identifier {
 		return deriveBlockHashV1(hdr)
 	case 3, 4:
 		return deriveBlockHashV3(hdr)
+	case 5:
+		return deriveBlockHashV5(hdr)
 	}
 	panic("unreachable code")
 }
@@ -163,13 +165,42 @@ func deriveBlockHashV3(hdr flowHeader) flow.Identifier {
 	return flow.MakeID(dst)
 }
 
+func deriveBlockHashV5(hdr flowHeader) flow.Identifier {
+	dst := struct {
+		ChainID            flow.ChainID
+		ParentID           flow.Identifier
+		Height             uint64
+		PayloadHash        flow.Identifier
+		Timestamp          uint64
+		View               uint64
+		ParentView         uint64
+		ParentVoterIndices []byte
+		ParentVoterSigData []byte
+		ProposerID         flow.Identifier
+		LastViewTCID       flow.Identifier
+	}{
+		ChainID:            hdr.ChainID,
+		ParentID:           hdr.ParentID,
+		Height:             hdr.Height,
+		PayloadHash:        hdr.PayloadHash,
+		Timestamp:          uint64(hdr.Timestamp.UnixNano()),
+		View:               hdr.View,
+		ParentView:         hdr.ParentView,
+		ParentVoterIndices: hdr.ParentVoterIndices,
+		ParentVoterSigData: hdr.ParentVoterSigData,
+		ProposerID:         hdr.ProposerID,
+		LastViewTCID:       hdr.LastViewTC.ID(),
+	}
+	return flow.MakeID(dst)
+}
+
 func deriveEventsHash(spork *config.Spork, events []flowEvent) flow.Identifier {
 	switch spork.Version {
 	case 1:
 		return deriveEventsHashV1(events)
 	case 2, 3:
 		return deriveEventsHashV2(events)
-	case 4:
+	case 4, 5:
 		return deriveEventsHashV4(events)
 	}
 	panic("unreachable code")
@@ -265,7 +296,7 @@ func deriveExecutionResult(spork *config.Spork, exec flowExecutionResult) flow.I
 	switch spork.Version {
 	case 1:
 		return deriveExecutionResultV1(exec)
-	case 2, 3, 4:
+	case 2, 3, 4, 5:
 		return deriveExecutionResultV2(exec)
 	}
 	panic("unreachable code")
@@ -332,6 +363,28 @@ func verifyBlockHash(spork *config.Spork, hash []byte, height uint64, hdr *entit
 	if spork.Chain.Network == "canary" {
 		chainID = flow.ChainID("flow-benchnet")
 	}
+
+	var lastViewTC *flow.TimeoutCertificate
+	if hdr.LastViewTc != nil {
+		newestQC := hdr.LastViewTc.HighestQc
+		if newestQC == nil {
+			log.Errorf("invalid structure newest QC should be present")
+			return false
+		}
+		lastViewTC = &flow.TimeoutCertificate{
+			View:          hdr.LastViewTc.View,
+			NewestQCViews: hdr.LastViewTc.HighQcViews,
+			SignerIndices: hdr.LastViewTc.SignerIndices,
+			SigData:       hdr.LastViewTc.SigData,
+			NewestQC: &flow.QuorumCertificate{
+				View:          newestQC.View,
+				BlockID:       toFlowIdentifier(newestQC.BlockId),
+				SignerIndices: newestQC.SignerIndices,
+				SigData:       newestQC.SigData,
+			},
+		}
+	}
+
 	xhdr := flowHeader{
 		ChainID:            chainID,
 		Height:             hdr.Height,
@@ -344,6 +397,8 @@ func verifyBlockHash(spork *config.Spork, hash []byte, height uint64, hdr *entit
 		ProposerSigData:    hdr.ProposerSigData,
 		Timestamp:          hdr.Timestamp.AsTime().UTC(),
 		View:               hdr.View,
+		LastViewTC:         lastViewTC,
+		ParentView:         hdr.ParentView,
 	}
 	blockID := deriveBlockHash(spork, xhdr)
 	if !bytes.Equal(blockID[:], hash) {
@@ -446,4 +501,7 @@ type flowHeader struct {
 	ProposerSigData    []byte
 	Timestamp          time.Time
 	View               uint64
+	LastViewTC         *flow.TimeoutCertificate
+	ParentView         uint64
+	BlockStatus        flow.BlockStatus
 }
