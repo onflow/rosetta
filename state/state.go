@@ -21,8 +21,8 @@ import (
 	flowcrypto "github.com/onflow/flow-go/crypto"
 	"github.com/onflow/flow-go/follower"
 	"github.com/onflow/flow-go/model/flow"
+	"github.com/onflow/flow-go/module/chainsync"
 	"github.com/onflow/flow-go/module/compliance"
-	"github.com/onflow/flow-go/module/synchronization"
 	"github.com/onflow/flow-go/storage"
 	"github.com/onflow/flow-go/storage/badger/operation"
 	"github.com/onflow/rosetta/cache"
@@ -680,7 +680,7 @@ func (i *Indexer) runConsensusFollower(ctx context.Context) {
 		}),
 		follower.WithDB(db),
 		follower.WithLogLevel("info"),
-		follower.WithSyncCoreConfig(&synchronization.Config{
+		follower.WithSyncCoreConfig(&chainsync.Config{
 			MaxAttempts:   5,
 			MaxRequests:   5,
 			MaxSize:       64,
