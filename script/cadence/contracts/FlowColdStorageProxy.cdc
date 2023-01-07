@@ -41,7 +41,7 @@ pub contract FlowColdStorageProxy {
     pub event RequestedUndelegate(from: Address?, to: String, amount: UFix64)
 
     // WithdrewUndelegated is emitted when previously delegated funds are
-		// transfered back to the Vault.
+	// transfered back to the Vault.
     pub event WithdrewUndelegated(from: Address?, to: String, amount: UFix64)
 
     // Vault implements FungibleToken.Receiver and some additional methods for
