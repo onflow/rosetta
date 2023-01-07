@@ -1,5 +1,6 @@
 import FlowToken from 0x0ae53cb6e3f42a79
 import FungibleToken from 0xee82856bf20e2aa6
+import FlowIDTableStaking from 0x8624b52f9ddcd04a
 
 // FlowColdStorageProxy provides support for the transfer of FLOW tokens within
 // cold storage transactions.
@@ -29,6 +30,20 @@ pub contract FlowColdStorageProxy {
     // FlowColdStorageProxy.Vault.
     pub event Transferred(from: Address?, to: Address, amount: UFix64)
 
+    // Delegated is emitted when a delegation takes place from a
+    // FlowColdStorageProxy.Vault.
+    pub event Delegated(from: Address?, to: String, amount: UFix64)
+
+    // RewardsDelegated is emitted when delegation rewards are re-delegated.
+    pub event RewardsDelegated(from: Address?, to: String, amount: UFix64)
+
+    // RequestedUndelegate is emitted when an undelgation request takes place.
+    pub event RequestedUndelegate(from: Address?, to: String, amount: UFix64)
+
+    // WithdrewUndelegated is emitted when previously delegated funds are
+		// transfered back to the Vault.
+    pub event WithdrewUndelegated(from: Address?, to: String, amount: UFix64)
+
     // Vault implements FungibleToken.Receiver and some additional methods for
     // making transfers and getting the balance.
     //
@@ -44,9 +59,11 @@ pub contract FlowColdStorageProxy {
         pub var lastNonce: Int64
         access(self) let flowVault: @FungibleToken.Vault
         access(self) let publicKey: [UInt8]
+		access(self) let nodeDelegator: @FlowIDTableStaking.NodeDelegator
 
-        init(publicKey: [UInt8]) {
+        init(publicKey: [UInt8], stakingNodeID: String) {
             self.flowVault <- FlowToken.createEmptyVault()
+			self.nodeDelegator <- FlowIDTableStaking.registerNewDelegator(nodeID: stakingNodeID)
             self.lastNonce = -1
             self.publicKey = publicKey
             // NOTE(tav): We instantiate a PublicKey to make sure it is valid.
@@ -71,6 +88,15 @@ pub contract FlowColdStorageProxy {
         // getPublicKey returns the raw public key for the Vault.
         pub fun getPublicKey(): [UInt8] {
             return self.publicKey
+        }
+
+        // getDelegatorInfo return a struct with info about the
+        // delegated balances for the Vault.
+        pub fun getDelegatorInfo(): FlowIDTableStaking.DelegatorInfo {
+            return FlowIDTableStaking.DelegatorInfo(
+                nodeID: self.nodeDelegator.id,
+                delegatorID: self.nodeDelegator.nodeID
+            )
         }
 
         // LEAVE THIS COMMENT AS IS. IT IS USED BY THE AUTOMATED TESTS.
@@ -124,10 +150,143 @@ pub contract FlowColdStorageProxy {
             emit Transferred(from: self.owner!.address, to: receiver, amount: amount)
         }
 
+        pub fun delegateVaultTokens(amount: UFix64, nonce: Int64, sig: [UInt8]) {
+            // Ensure that the nonce follows on from the previous meta
+            // transaction.
+            if nonce != (self.lastNonce + 1) {
+                panic("Invalid meta transaction nonce")
+            }
+
+            // Construct the message to sign.
+            var data: [UInt8] = "delegate".toBytes()
+            data = data.concat(amount.toBigEndianBytes())
+            data = data.concat(nonce.toBigEndianBytes())
+
+            // Verify the signature.
+            let key = PublicKey(
+                publicKey: self.publicKey,
+                signatureAlgorithm: SignatureAlgorithm.ECDSA_secp256k1
+            )
+            if !key.verify(signature: sig, signedData: data, domainSeparationTag: "FLOW-V0.0-user", hashAlgorithm: HashAlgorithm.SHA3_256) {
+                panic("Invalid meta transaction signature")
+            }	
+
+            let xfer <- self.flowVault.withdraw(amount: amount)
+            self.nodeDelegator.delegateNewTokens(from: <- xfer)
+
+            // Increment the nonce.
+            self.lastNonce = self.lastNonce + 1
+            emit Delegated(from: self.owner!.address, to: self.nodeDelegator.nodeID, amount: amount)
+        }
+
+        pub fun delegateRewardsTokens(nonce: Int64, sig: [UInt8]) {
+            // Ensure that the nonce follows on from the previous meta
+            // transaction.
+            if nonce != (self.lastNonce + 1) {
+                panic("Invalid meta transaction nonce")
+            }
+
+            // Construct the message to sign.
+            var data: [UInt8] = "delegate-rewards".toBytes()
+            data = data.concat(nonce.toBigEndianBytes())
+
+            // Verify the signature.
+            let key = PublicKey(
+                publicKey: self.publicKey,
+                signatureAlgorithm: SignatureAlgorithm.ECDSA_secp256k1
+            )
+            if !key.verify(signature: sig, signedData: data, domainSeparationTag: "FLOW-V0.0-user", hashAlgorithm: HashAlgorithm.SHA3_256) {
+                panic("Invalid meta transaction signature")
+            }	
+
+            let delegatorInfo = self.getDelegatorInfo()
+            let amount = delegatorInfo.tokensRewarded
+            self.nodeDelegator.delegateRewardedTokens(amount: amount)
+
+            // Increment the nonce.
+            self.lastNonce = self.lastNonce + 1
+            emit RewardsDelegated(from: self.owner!.address, to: self.nodeDelegator.nodeID, amount: amount)
+        }
+
+        pub fun requestUndelegateTokens(amount: UFix64, nonce: Int64, sig: [UInt8]) {
+            // Ensure that the nonce follows on from the previous meta
+            // transaction.
+            if nonce != (self.lastNonce + 1) {
+                panic("Invalid meta transaction nonce")
+            }
+
+            // Construct the message to sign.
+            var data: [UInt8] = "undelegate".toBytes()
+            data = data.concat(amount.toBigEndianBytes())
+            data = data.concat(nonce.toBigEndianBytes())
+
+            // Verify the signature.
+            let key = PublicKey(
+                publicKey: self.publicKey,
+                signatureAlgorithm: SignatureAlgorithm.ECDSA_secp256k1
+            )
+            if !key.verify(signature: sig, signedData: data, domainSeparationTag: "FLOW-V0.0-user", hashAlgorithm: HashAlgorithm.SHA3_256) {
+                panic("Invalid meta transaction signature")
+            }	
+
+            self.nodeDelegator.requestUnstaking(amount: amount)
+
+            // Increment the nonce.
+            self.lastNonce = self.lastNonce + 1
+            emit RequestedUndelegate(from: self.owner!.address, to: self.nodeDelegator.nodeID, amount: amount)
+        }
+
+        pub fun withdrawUndelegatedTokensToVault(nonce: Int64, sig: [UInt8]) {
+            // Ensure that the nonce follows on from the previous meta
+            // transaction.
+            if nonce != (self.lastNonce + 1) {
+                panic("Invalid meta transaction nonce")
+            }
+
+            // Construct the message to sign.
+            var data: [UInt8] = "delegate-rewards".toBytes()
+            data = data.concat(nonce.toBigEndianBytes())
+
+            // Verify the signature.
+            let key = PublicKey(
+                publicKey: self.publicKey,
+                signatureAlgorithm: SignatureAlgorithm.ECDSA_secp256k1
+            )
+            if !key.verify(signature: sig, signedData: data, domainSeparationTag: "FLOW-V0.0-user", hashAlgorithm: HashAlgorithm.SHA3_256) {
+                panic("Invalid meta transaction signature")
+            }	
+
+            let delegatorInfo = self.getDelegatorInfo()
+            let totalAmount = delegatorInfo.tokensRewarded + delegatorInfo.tokensUnstaked
+
+            if totalAmount == 0.0 {
+                panic("No funds available for withdrawal")
+            }
+
+            if delegatorInfo.tokensRewarded > 0.0 {
+                let xfer = self.nodeDelegator.withdrawRewardedTokens(amount: delegatorInfo.tokensRewarded)
+                self.flowVault.deposit(from: <- xfer)
+            }
+
+            if delegatorInfo.tokensUnstaked > 0.0 {
+                let xfer = self.nodeDelegator.withdrawUnstakedTokens(amount: delegatorInfo.tokensUnstaked)
+                self.flowVault.deposit(from: <- xfer)
+            }
+						
+            // Increment the nonce.
+            self.lastNonce = self.lastNonce + 1
+            emit WithdrewUndelegated(from: self.owner!.address, to: self.nodeDelegator.nodeID, amount: totalAmount)
+        }
+
         destroy() {
             if self.flowVault.balance > 0.0 {
                 panic("Cannot destroy a Vault without transferring the remaining balance")
             }
+
+            if self.getDelegatorInfo().totalTokensInRecord() > 0.0 {
+                panic("Cannot destroy a Vault with delegated funds remaining")
+            }
+
             destroy self.flowVault
         }
     }
@@ -141,9 +300,9 @@ pub contract FlowColdStorageProxy {
     //
     // And, finally, the FlowColdStorageProxy.Vault itself is made directly
     // accessible via /public/flowColdStorageProxyVault.
-    pub fun setup(payer: AuthAccount, publicKey: [UInt8]): Address {
+    pub fun setup(payer: AuthAccount, publicKey: [UInt8], stakingNodeID: String): Address {
         let acct = AuthAccount(payer: payer)
-        acct.save(<- create Vault(publicKey: publicKey), to: self.VaultCapabilityStoragePath)
+        acct.save(<- create Vault(publicKey: publicKey, stakingNodeID: stakingNodeID), to: self.VaultCapabilityStoragePath)
         acct.unlink(/public/flowTokenReceiver)
         acct.link<&{FungibleToken.Receiver}>(/public/defaultFlowTokenReceiver, target: /storage/flowTokenVault)!
 		acct.link<&{FungibleToken.Receiver}>(/public/flowTokenReceiver, target: self.VaultCapabilityStoragePath)!
