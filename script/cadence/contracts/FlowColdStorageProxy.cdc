@@ -59,7 +59,7 @@ pub contract FlowColdStorageProxy {
         pub var lastNonce: Int64
         access(self) let flowVault: @FungibleToken.Vault
         access(self) let publicKey: [UInt8]
-		access(self) let nodeDelegator: @FlowIDTableStaking.NodeDelegator
+		access(self) var nodeDelegator: @FlowIDTableStaking.NodeDelegator
 
         init(publicKey: [UInt8], stakingNodeID: String) {
             self.flowVault <- FlowToken.createEmptyVault()
@@ -149,6 +149,18 @@ pub contract FlowColdStorageProxy {
             self.lastNonce = self.lastNonce + 1
             emit Transferred(from: self.owner!.address, to: receiver, amount: amount)
         }
+
+		pub fun swapValidator(stakingNodeId: String) {
+            let delegatorInfo = self.getDelegatorInfo()
+			if delegatorInfo.totalTokensInRecord() > 0.0 {
+				panic("All tokens must be withdrawn from NodeDelegator before swapping")
+			}
+
+			var swap: @FlowIDTableStaking.NodeDelegator <- FlowIDTableStaking.registerNewDelegator(nodeID: stakingNodeID)
+			self.nodeDelegator <-> swap
+
+			destroy swap
+		}
 
         pub fun delegateVaultTokens(amount: UFix64, nonce: Int64, sig: [UInt8]) {
             // Ensure that the nonce follows on from the previous meta
@@ -287,6 +299,7 @@ pub contract FlowColdStorageProxy {
                 panic("Cannot destroy a Vault with delegated funds remaining")
             }
 
+			destroy self.nodeDelegator
             destroy self.flowVault
         }
     }
