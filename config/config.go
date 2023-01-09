@@ -66,6 +66,7 @@ func (c *Chain) PathFor(subpath ...string) string {
 func (c *Chain) SporkFor(height uint64) *Spork {
 	cur := c.Sporks[0]
 	if height < cur.RootBlock {
+		log.Errorf("Height: %d cannot be associated with any sporks in the config", height)
 		return nil
 	}
 	for {
