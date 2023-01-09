@@ -11,7 +11,7 @@
         "flow_token": "7e60df042a9c0868",
         "fungible_token": "9a0766d93b6608b7"
     },
-    "data_dir": "/data",
+    "data_dir": "./data",
     "disable_consensus_follower": true,
     "network": "testnet",
     "originators": [
@@ -33,19 +33,64 @@
             "access_nodes": [
                 {
                     "address": "access-001.devnet34.nodes.onflow.org:9000"
-                },
-                {
-                    "address": "access-002.devnet34.nodes.onflow.org:9000"
-                },
-                {
-                    "address": "access-003.devnet34.nodes.onflow.org:9000"
-                },
-                {
-                    "address": "access-004.devnet34.nodes.onflow.org:9000"
                 }
             ],
             "root_block": 64904846,
             "version": 2
+        },
+        "35": {
+            "access_nodes": [
+                {
+                    "address": "access-001.devnet35.nodes.onflow.org:9000"
+                }
+            ],
+            "root_block": 70072575,
+            "version": 3
+        },
+        "36": {
+            "access_nodes": [
+                {
+                    "address": "access-001.devnet36.nodes.onflow.org:9000"
+                }
+            ],
+            "root_block": 74786360,
+            "version": 3
+        },
+        "37": {
+            "access_nodes": [
+                {
+                    "address": "access-001.devnet37.nodes.onflow.org:9000"
+                }
+            ],
+            "root_block": 76159167,
+            "version": 4
+        },
+        "38": {
+            "access_nodes": [
+                {
+                    "address": "access-001.devnet38.nodes.onflow.org:9000"
+                }
+            ],
+            "root_block": 83007730,
+            "version": 4
+        },
+        "39": {
+            "access_nodes": [
+                {
+                    "address": "access-001.devnet39.nodes.onflow.org:9000"
+                },
+                {
+                    "address": "access-002.devnet39.nodes.onflow.org:9000"
+                },
+                {
+                    "address": "access-003.devnet39.nodes.onflow.org:9000"
+                },
+                {
+                    "address": "access-004.devnet39.nodes.onflow.org:9000"
+                }
+            ],
+            "root_block": 90595736,
+            "version": 5
         }
     }
 }
