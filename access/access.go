@@ -13,7 +13,7 @@ import (
 	"time"
 
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
-	libp2ptls "github.com/libp2p/go-libp2p-tls"
+	libp2ptls "github.com/libp2p/go-libp2p/p2p/security/tls"
 	"github.com/onflow/cadence"
 	jsoncdc "github.com/onflow/cadence/encoding/json"
 	"github.com/onflow/cadence/runtime/common"
