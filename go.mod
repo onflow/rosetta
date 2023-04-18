@@ -10,7 +10,7 @@ require (
 	github.com/ethereum/go-ethereum v1.10.18
 	github.com/golang/protobuf v1.5.2
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
-	github.com/libp2p/go-libp2p-tls v0.4.1
+	github.com/libp2p/go-libp2p v0.24.2
 	github.com/onflow/cadence v0.38.1
 	github.com/onflow/flow-go v0.30.3
 	github.com/onflow/flow-go/crypto v0.24.7

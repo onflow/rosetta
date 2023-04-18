@@ -645,9 +645,9 @@ func (i *Indexer) runConsensusFollower(ctx context.Context) {
 	}
 	// Initialize a private key for joining the unstaked peer-to-peer network.
 	// This can be ephemeral, so we generate a new one each time we start.
-	seed := make([]byte, flowcrypto.KeyGenSeedMinLenECDSASecp256k1)
+	seed := make([]byte, flowcrypto.KeyGenSeedMinLen)
 	n, err := rand.Read(seed)
-	if err != nil || n != flowcrypto.KeyGenSeedMinLenECDSASecp256k1 {
+	if err != nil || n != flowcrypto.KeyGenSeedMinLen {
 		log.Fatalf("Could not generate seed for the consensus follower private key")
 	}
 	key, err := utils.GeneratePublicNetworkingKey(seed)
