@@ -13,8 +13,10 @@ func TestVerifyBlockHash(t *testing.T) {
 	var notWorkingBlockHeight uint64 = 50767887
 	var workingBlockHeight uint64 = 50767885
 	ctx := context.Background()
-	cfg := config.Init(ctx, "../mainnet.json")
-	spork := cfg.SporkFor(workingBlockHeight)
+	spork, err := createSpork()
+	if err != nil {
+		assert.Fail(t, err.Error())
+	}
 	client := spork.AccessNodes.Client()
 	workingBlock, err := client.BlockByHeight(ctx, workingBlockHeight)
 	if err != nil {
@@ -34,4 +36,8 @@ func TestVerifyBlockHash(t *testing.T) {
 	}
 	assert.True(t, verifyBlockHash(spork, workingBlock.Id, workingBlockHeight, workingBlockhdr, workingBlock))
 	assert.True(t, verifyBlockHash(spork, notWorkingBlock.Id, notWorkingBlockHeight, notWorkingBlockhdr, notWorkingBlock))
+}
+
+func createSpork() (*config.Spork, error) {
+	return nil, nil
 }
