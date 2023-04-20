@@ -17,6 +17,7 @@ func main() {
 		{"mainnet", "access.mainnet.nodes.onflow.org:9000"},
 		{"testnet", "access.devnet.nodes.onflow.org:9000"},
 		{"canary", "access.canary.nodes.onflow.org:9000"},
+		{"localnet", "127.0.0.1:3569"},
 	} {
 		pool := access.New(ctx, []access.NodeConfig{{Address: network.addr}}, nil)
 		client := pool.Client()
