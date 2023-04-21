@@ -539,9 +539,6 @@ func verifyBlockHash(spork *config.Spork, hash []byte, height uint64, hdr *entit
 		resultHashV5 := flow.MerkleRoot(resultIDsV5...)
 		payloadHash := flow.ConcatSum(collectionHash, sealHash, receiptHash, resultHash)
 		payloadHashV5 := flow.ConcatSum(collectionHash, sealHash, receiptHash, resultHashV5)
-		log.Info(fmt.Sprintf("collectionHash: %x", collectionHash[:]))
-		log.Info(fmt.Sprintf("sealHash: %x", sealHash[:]))
-		log.Info(fmt.Sprintf("receiptHash: %x", receiptHash[:]))
 		if payloadHash != xhdr.PayloadHash && payloadHashV5 != xhdr.PayloadHash {
 			log.Errorf(
 				"Mismatching payload hash for block %x at height %d: expected %x, got %x for version 6 and %x for Versions before it",
