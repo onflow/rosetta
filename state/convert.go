@@ -517,50 +517,31 @@ func verifyBlockHash(spork *config.Spork, hash []byte, height uint64, hdr *entit
 	}
 	receiptHash := flow.MerkleRoot(receiptIDs...)
 	var resultIDs []flow.Identifier
-	if spork.Version >= 5 {
-		// for hashing versions V5 (mainnet22) and above
-		// todo: remove this double check after mainnet23 spork, and have just one call to convertExecutionResult
-		var resultIDsV5 []flow.Identifier
-		for _, src := range block.ExecutionResultList {
-			exec, ok := convertExecutionResult(hash, height, src)
-			if ok {
-				resultIDs = append(resultIDs, deriveExecutionResult(spork, exec))
-			}
-			execV5, okV5 := convertExecutionResultV5(hash, height, src)
-			if okV5 {
-				resultIDsV5 = append(resultIDsV5, deriveExecutionResultV5(execV5))
-			}
-			if !okV5 && !ok {
-				// couldn't convert either way, go by regular code path
-				return false
-			}
-		}
-		resultHash := flow.MerkleRoot(resultIDs...)
-		resultHashV5 := flow.MerkleRoot(resultIDsV5...)
-		payloadHash := flow.ConcatSum(collectionHash, sealHash, receiptHash, resultHash)
-		payloadHashV5 := flow.ConcatSum(collectionHash, sealHash, receiptHash, resultHashV5)
-		if payloadHash != xhdr.PayloadHash && payloadHashV5 != xhdr.PayloadHash {
-			log.Errorf(
-				"Mismatching payload hash for block %x at height %d: expected %x, got %x for version 6 and %x for Versions before it",
-				hash, height, xhdr.PayloadHash[:], payloadHash[:], payloadHashV5[:],
-			)
-			return false
-		}
-		return true
-	}
+	// for hashing versions V5 (mainnet22) and above
+	// todo: remove this double check after mainnet23 spork, and have just one call to convertExecutionResult
+	var resultIDsV5 []flow.Identifier
 	for _, src := range block.ExecutionResultList {
 		exec, ok := convertExecutionResult(hash, height, src)
-		if !ok {
+		if ok {
+			resultIDs = append(resultIDs, deriveExecutionResult(spork, exec))
+		}
+		execV5, okV5 := convertExecutionResultV5(hash, height, src)
+		if okV5 {
+			resultIDsV5 = append(resultIDsV5, deriveExecutionResultV5(execV5))
+		}
+		if !okV5 && !ok {
+			// couldn't convert either way, go by regular code path
 			return false
 		}
-		resultIDs = append(resultIDs, deriveExecutionResult(spork, exec))
 	}
 	resultHash := flow.MerkleRoot(resultIDs...)
+	resultHashV5 := flow.MerkleRoot(resultIDsV5...)
 	payloadHash := flow.ConcatSum(collectionHash, sealHash, receiptHash, resultHash)
-	if payloadHash != xhdr.PayloadHash {
+	payloadHashV5 := flow.ConcatSum(collectionHash, sealHash, receiptHash, resultHashV5)
+	if payloadHash != xhdr.PayloadHash && payloadHashV5 != xhdr.PayloadHash {
 		log.Errorf(
-			"Mismatching payload hash for block %x at height %d: expected %x, got %x",
-			hash, height, xhdr.PayloadHash[:], payloadHash[:],
+			"Mismatching payload hash for block %x at height %d: expected %x, got %x for version 6 and %x for Versions before it",
+			hash, height, xhdr.PayloadHash[:], payloadHash[:], payloadHashV5[:],
 		)
 		return false
 	}
