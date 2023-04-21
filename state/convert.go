@@ -601,20 +601,20 @@ type flowExecutionResult struct {
 // todo: decide if we should keep this or make this for V6 and above instead, since an inner structs have changed for V6+
 // flowExecutionResultV5 follows ExecutionResult formats of v0.29.x
 type flowExecutionResultV5 struct {
+	PreviousResultID flow.Identifier
 	BlockID          flow.Identifier
 	Chunks           ChunkListV5
-	ExecutionDataID  flow.Identifier
-	PreviousResultID flow.Identifier
 	ServiceEvents    flow.ServiceEventList
+	ExecutionDataID  flow.Identifier
 }
 
 type flowChunkBodyV5 struct {
-	BlockID              flow.Identifier
 	CollectionIndex      uint
-	EventCollection      flow.Identifier
-	NumberOfTransactions uint64
 	StartState           flow.StateCommitment
+	EventCollection      flow.Identifier
+	BlockID              flow.Identifier
 	TotalComputationUsed uint64
+	NumberOfTransactions uint64
 }
 
 type flowChunkV5 struct {
