@@ -37,7 +37,7 @@ func createSpork(ctx context.Context) (*config.Spork, error) {
 	pool := access.New(ctx, []access.NodeConfig{{Address: addr}}, nil)
 	chain := &config.Chain{Network: "mainnet"}
 	return &config.Spork{
-		Version:     5,
+		Version:     6,
 		Chain:       chain,
 		AccessNodes: pool,
 		RootBlock:   47169687,
