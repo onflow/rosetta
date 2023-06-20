@@ -47,7 +47,8 @@ func convertExecutionResultV5(
 		})
 	}
 	for _, ev := range result.ServiceEvents {
-		switch ev.Type {
+		eventType := flow.ServiceEventType(ev.String())
+		switch eventType {
 		case flow.ServiceEventSetup:
 			setup := &flow.EpochSetup{}
 			err := json.Unmarshal(ev.Payload, setup)
@@ -60,7 +61,7 @@ func convertExecutionResultV5(
 			}
 			exec.ServiceEvents = append(exec.ServiceEvents, flow.ServiceEvent{
 				Event: setup,
-				Type:  ev.Type,
+				Type:  eventType,
 			})
 		case flow.ServiceEventCommit:
 			commit := &flow.EpochCommit{}
@@ -74,7 +75,7 @@ func convertExecutionResultV5(
 			}
 			exec.ServiceEvents = append(exec.ServiceEvents, flow.ServiceEvent{
 				Event: commit,
-				Type:  ev.Type,
+				Type:  eventType,
 			})
 		default:
 			log.Errorf(
@@ -110,7 +111,8 @@ func convertExecutionResult(hash []byte, height uint64, result *entities.Executi
 		})
 	}
 	for _, ev := range result.ServiceEvents {
-		switch ev.Type {
+		eventType := flow.ServiceEventType(ev.String())
+		switch eventType {
 		case flow.ServiceEventSetup:
 			setup := &flow.EpochSetup{}
 			err := json.Unmarshal(ev.Payload, setup)
@@ -123,7 +125,7 @@ func convertExecutionResult(hash []byte, height uint64, result *entities.Executi
 			}
 			exec.ServiceEvents = append(exec.ServiceEvents, flow.ServiceEvent{
 				Event: setup,
-				Type:  ev.Type,
+				Type:  eventType,
 			})
 		case flow.ServiceEventCommit:
 			commit := &flow.EpochCommit{}
@@ -137,7 +139,7 @@ func convertExecutionResult(hash []byte, height uint64, result *entities.Executi
 			}
 			exec.ServiceEvents = append(exec.ServiceEvents, flow.ServiceEvent{
 				Event: commit,
-				Type:  ev.Type,
+				Type:  eventType,
 			})
 		default:
 			log.Errorf(
