@@ -11,8 +11,8 @@ import (
 
 func TestVerifyBlockHash(t *testing.T) {
 	// load mainnet config and get blocks exactly as state.go
-	var startBlockHeight uint64 = 50767887
-	var endBlockHeight uint64 = 50767897
+	var startBlockHeight uint64 = 55114464
+	var endBlockHeight uint64 = 55114466
 	ctx := context.Background()
 	spork, err := createSpork(ctx)
 	if err != nil {
