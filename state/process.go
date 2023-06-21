@@ -325,25 +325,25 @@ outer:
 			}
 			var resultID flow.Identifier
 			var resultIDV5 flow.Identifier
-			exec, ok := convertExecutionResult(hash, height, execResult)
-			if ok {
+			exec, convOk := convertExecutionResult(hash, height, execResult)
+			if convOk {
 				resultID = deriveExecutionResult(spork, exec)
 			}
-			execV5, okV5 := convertExecutionResultV5(hash, height, execResult)
-			if okV5 {
+			execV5, convOkV5 := convertExecutionResultV5(hash, height, execResult)
+			if convOkV5 {
 				resultIDV5 = deriveExecutionResultV5(execV5)
 			}
-			if !ok && !okV5 {
+			if !convOk && !convOkV5 {
 				skipCache = true
 				continue
 			}
-			sealedResult, ok := i.sealedResults[string(hash)]
+			sealedResult, foundOk := i.sealedResults[string(hash)]
 			// NOTE(tav): Skip the execution result check for the root block of
 			// a spork as it is self-sealed.
 			if spork.Prev != nil && height == spork.RootBlock {
-				sealedResult, ok = string(resultID[:]), true
+				sealedResult, foundOk = string(resultID[:]), true
 			}
-			if ok || okV5 {
+			if foundOk {
 				if string(resultID[:]) != sealedResult && string(resultIDV5[:]) != sealedResult {
 					log.Errorf(
 						"Got mismatching execution result hash for block %x at height %d: expected %x, got %x",
