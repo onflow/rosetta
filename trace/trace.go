@@ -92,9 +92,9 @@ func EndSpanOk(span trace.Span) {
 }
 
 // Gauge creates an instrument for recording the current value.
-func Gauge(namespace string, name string) instrument.Int64Callback {
+func Gauge(namespace string, name string) instrument.Int64ObservableGauge {
 	meter := global.Meter("rosetta.flow."+namespace, meterOpts...)
-	c, err := meter.Int64ObservableGauge(name, instrument.WithInt64Callback())
+	c, err := meter.Int64ObservableGauge(name)
 	if err != nil {
 		log.Fatalf("Failed to instantiate guage %s.%s: %s", namespace, name, err)
 	}
