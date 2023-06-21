@@ -27,7 +27,7 @@ var (
 
 func (i *Indexer) processBlock(rctx context.Context, spork *config.Spork, height uint64, hash []byte) {
 	// TODO(tav): Confirm that failed transactions do not emit invalid events.
-	indexerBlockHeight.Observe(rctx, int64(height))
+	// indexerBlockHeight.Observe(int64(height))
 	backoff := time.Second
 	blockID := toFlowIdentifier(hash)
 	ctx := rctx

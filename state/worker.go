@@ -26,7 +26,7 @@ func (i *Indexer) runWorker(rctx context.Context, id int) {
 				lastErr error
 				span    trace.Span
 			)
-			workerBlockHeight.Observe(rctx, int64(height))
+			// workerBlockHeight(int64(height))
 			attempt := 0
 			backoff := time.Second
 			slowPath := false
