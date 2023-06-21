@@ -47,7 +47,7 @@ func convertExecutionResultV5(
 		})
 	}
 	for _, ev := range result.ServiceEvents {
-		eventType := flow.ServiceEventType(ev.String())
+		eventType := flow.ServiceEventType(ev.Type)
 		switch eventType {
 		case flow.ServiceEventSetup:
 			setup := &flow.EpochSetup{}
@@ -75,6 +75,20 @@ func convertExecutionResultV5(
 			}
 			exec.ServiceEvents = append(exec.ServiceEvents, flow.ServiceEvent{
 				Event: commit,
+				Type:  eventType,
+			})
+		case flow.ServiceEventVersionBeacon:
+			beacon := &flow.VersionBeacon{}
+			err := json.Unmarshal(ev.Payload, beacon)
+			if err != nil {
+				log.Errorf(
+					"Failed to decode %q service event in block %x at height %d: %s",
+					ev.Type, hash, height, err,
+				)
+				return flowExecutionResultV5{}, false
+			}
+			exec.ServiceEvents = append(exec.ServiceEvents, flow.ServiceEvent{
+				Event: beacon,
 				Type:  eventType,
 			})
 		default:
@@ -111,7 +125,7 @@ func convertExecutionResult(hash []byte, height uint64, result *entities.Executi
 		})
 	}
 	for _, ev := range result.ServiceEvents {
-		eventType := flow.ServiceEventType(ev.String())
+		eventType := flow.ServiceEventType(ev.Type)
 		switch eventType {
 		case flow.ServiceEventSetup:
 			setup := &flow.EpochSetup{}
@@ -139,6 +153,20 @@ func convertExecutionResult(hash []byte, height uint64, result *entities.Executi
 			}
 			exec.ServiceEvents = append(exec.ServiceEvents, flow.ServiceEvent{
 				Event: commit,
+				Type:  eventType,
+			})
+		case flow.ServiceEventVersionBeacon:
+			beacon := &flow.VersionBeacon{}
+			err := json.Unmarshal(ev.Payload, beacon)
+			if err != nil {
+				log.Errorf(
+					"Failed to decode %q service event in block %x at height %d: %s",
+					ev.Type, hash, height, err,
+				)
+				return flowExecutionResult{}, false
+			}
+			exec.ServiceEvents = append(exec.ServiceEvents, flow.ServiceEvent{
+				Event: beacon,
 				Type:  eventType,
 			})
 		default:

@@ -34,8 +34,8 @@ func TestVerifyBlockHash(t *testing.T) {
 }
 
 func TestVerifyExecutionResultHash(t *testing.T) {
-	var startBlockHeight uint64 = 55114464
-	var endBlockHeight uint64 = 55114465
+	var startBlockHeight uint64 = 55114468
+	var endBlockHeight uint64 = 55114477
 	ctx := context.Background()
 	spork, err := createSpork(ctx)
 	if err != nil {
@@ -78,13 +78,13 @@ func TestVerifyExecutionResultHash(t *testing.T) {
 }
 
 func createSpork(ctx context.Context) (*config.Spork, error) {
-	addr := "access-001.mainnet22.nodes.onflow.org:9000"
+	addr := "access-001.mainnet23.nodes.onflow.org:9000"
 	pool := access.New(ctx, []access.NodeConfig{{Address: addr}}, nil)
 	chain := &config.Chain{Network: "mainnet"}
 	return &config.Spork{
 		Version:     6,
 		Chain:       chain,
 		AccessNodes: pool,
-		RootBlock:   47169687,
+		RootBlock:   55114467,
 	}, nil
 }
