@@ -171,7 +171,7 @@ func convertExecutionResult(hash []byte, height uint64, result *entities.Executi
 			})
 		default:
 			log.Errorf(
-				"Unknown service V Other event type in block %x at height %d: %q",
+				"Unknown service event type in block %x at height %d: %q",
 				hash, height, ev.Type,
 			)
 			return flowExecutionResult{}, false
