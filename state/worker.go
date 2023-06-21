@@ -7,16 +7,26 @@ import (
 	"github.com/onflow/rosetta/cache"
 	"github.com/onflow/rosetta/log"
 	"github.com/onflow/rosetta/trace"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/metric/instrument"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
-var (
-	workerBlockHeight = trace.Gauge("state", "worker_block_height")
-)
+var ()
 
 func (i *Indexer) runWorker(rctx context.Context, id int) {
 	rctx = cache.Context(rctx, "worker")
+
+	trace.Gauge("state", "worker_block_height",
+		func(g instrument.Int64ObservableGauge, obs metric.Observer) {
+			workLoop(i, rctx, id, func(height int64) {
+				obs.ObserveInt64(g, height)
+			})
+		})
+}
+
+func workLoop(i *Indexer, rctx context.Context, id int, workerBlockHeight func(int64)) {
 	for {
 		select {
 		case <-rctx.Done():
@@ -26,7 +36,7 @@ func (i *Indexer) runWorker(rctx context.Context, id int) {
 				lastErr error
 				span    trace.Span
 			)
-			// workerBlockHeight(int64(height))
+			workerBlockHeight(int64(height))
 			attempt := 0
 			backoff := time.Second
 			slowPath := false

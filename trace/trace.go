@@ -92,13 +92,23 @@ func EndSpanOk(span trace.Span) {
 }
 
 // Gauge creates an instrument for recording the current value.
-func Gauge(namespace string, name string) instrument.Int64ObservableGauge {
+func Gauge(namespace string, name string, registerObserver func(instrument.Int64ObservableGauge, metric.Observer)) metric.Registration {
 	meter := global.Meter("rosetta.flow."+namespace, meterOpts...)
 	c, err := meter.Int64ObservableGauge(name)
 	if err != nil {
 		log.Fatalf("Failed to instantiate guage %s.%s: %s", namespace, name, err)
 	}
-	return c
+
+	reg, err := meter.RegisterCallback(func(ctx context.Context, observer metric.Observer) error {
+		registerObserver(c, observer)
+		return nil
+	}, c)
+
+	if err != nil {
+		log.Fatalf("fail to register callback for Gauge metrics: %v, name: %v", namespace, name)
+	}
+
+	return reg
 }
 
 // GetMethodName returns the method name from a fully qualified gRPC method
