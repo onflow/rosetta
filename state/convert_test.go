@@ -88,6 +88,7 @@ func TestDeriveEventsHash(t *testing.T) {
 	client := spork.AccessNodes.Client()
 	for blockHeight := startBlockHeight; blockHeight < endBlockHeight; blockHeight++ {
 		block, err := client.BlockByHeight(ctx, blockHeight)
+		assert.NoError(t, err)
 		cols := []*collectionData{}
 		eventHashes := []flow.Identifier{}
 		txnIndex := -1
@@ -95,7 +96,6 @@ func TestDeriveEventsHash(t *testing.T) {
 			colData := &collectionData{}
 			info, err := client.CollectionByID(ctx, col.CollectionId)
 			assert.NoError(t, err)
-			colData.txns = append(colData.txns, info)
 			for _, txnHash := range info.TransactionIds {
 				info, err := client.Transaction(ctx, txnHash)
 				assert.NoError(t, err)
@@ -118,7 +118,7 @@ func TestDeriveEventsHash(t *testing.T) {
 						Type:             flow.EventType(evt.Type),
 					}
 					colEvents = append(colEvents, event)
-					print(event)
+					print(event.String())
 				}
 			}
 			eventHashes = append(eventHashes, deriveEventsHash(spork, colEvents))
