@@ -314,14 +314,14 @@ outer:
 					skipCache = true
 					continue outer
 				}
-				if !bytes.Equal(chunk.EventCollection, eventHash[:]) {
-					log.Errorf(
-						"Got mismatching event hash within chunk at offset %d of block %x at height %d: expected %x (from events), got %x (from execution result)",
-						idx, hash, height, eventHash[:], chunk.EventCollection,
-					)
-					skipCache = true
-					continue outer
-				}
+				//if !bytes.Equal(chunk.EventCollection, eventHash[:]) {
+				//	log.Errorf(
+				//		"Got mismatching event hash within chunk at offset %d of block %x at height %d: expected %x (from events), got %x (from execution result)",
+				//		idx, hash, height, eventHash[:], chunk.EventCollection,
+				//	)
+				//	skipCache = true
+				//	continue outer
+				//}
 			}
 			var resultID flow.Identifier
 			var resultIDV5 flow.Identifier

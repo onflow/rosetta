@@ -79,7 +79,7 @@ func TestVerifyExecutionResultHash(t *testing.T) {
 
 func TestDeriveEventsHash(t *testing.T) {
 	var startBlockHeight uint64 = 55114467
-	var endBlockHeight uint64 = 55114468
+	var endBlockHeight uint64 = 55114469
 	ctx := context.Background()
 	spork, err := createSpork(ctx)
 	if err != nil {
@@ -118,10 +118,9 @@ func TestDeriveEventsHash(t *testing.T) {
 						Type:             flow.EventType(evt.Type),
 					}
 					colEvents = append(colEvents, event)
-					print(event.String())
 				}
 			}
-			eventHashes = append(eventHashes, deriveEventsHash(spork, colEvents))
+			hash := deriveEventsHash(spork, colEvents)
 		}
 	}
 }
