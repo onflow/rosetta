@@ -304,7 +304,7 @@ outer:
 				skipCache = true
 				continue
 			}
-			for idx, eventHash := range eventHashes {
+			for idx, _ := range eventHashes {
 				chunk := execResult.Chunks[idx]
 				if chunk == nil {
 					log.Errorf(
