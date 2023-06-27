@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/onflow/flow-go/model/flow"
+	"github.com/onflow/flow/protobuf/go/flow/entities"
 	"github.com/onflow/rosetta/access"
 	"github.com/onflow/rosetta/config"
 	"github.com/stretchr/testify/assert"
@@ -121,6 +122,14 @@ func TestDeriveEventsHash(t *testing.T) {
 				}
 			}
 			hash := deriveEventsHash(spork, colEvents)
+			eventHashes = append(eventHashes, hash)
+		}
+		var execResult *entities.ExecutionResult
+		execResult, err = client.ExecutionResultForBlockID(ctx, block.Id)
+		assert.NoError(t, err)
+		for idx, eventHash := range eventHashes {
+			chunk := execResult.Chunks[idx]
+			assert.Equal(t, eventHash[:], chunk.EventCollection)
 		}
 	}
 }
