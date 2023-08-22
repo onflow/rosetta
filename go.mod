@@ -11,8 +11,8 @@ require (
 	github.com/golang/protobuf v1.5.2
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/libp2p/go-libp2p v0.24.2
-	github.com/onflow/cadence v0.39.9
-	github.com/onflow/flow-go v0.31.9
+	github.com/onflow/cadence v0.39.14
+	github.com/onflow/flow-go v0.31.14
 	github.com/onflow/flow-go/crypto v0.24.7
 	github.com/onflow/flow/protobuf/go/flow v0.3.2-0.20230602212908-08fc6536d391
 	github.com/rs/zerolog v1.29.0
@@ -194,7 +194,7 @@ require (
 	github.com/onflow/flow-core-contracts/lib/go/contracts v1.2.3 // indirect
 	github.com/onflow/flow-core-contracts/lib/go/templates v1.2.3 // indirect
 	github.com/onflow/flow-ft/lib/go/contracts v0.7.0 // indirect
-	github.com/onflow/flow-go-sdk v0.41.5 // indirect
+	github.com/onflow/flow-go-sdk v0.41.9 // indirect
 	github.com/onflow/go-bitswap v0.0.0-20221017184039-808c5791a8a8 // indirect
 	github.com/onflow/sdks v0.5.0 // indirect
 	github.com/onflow/wal v0.0.0-20230529184820-bc9f8244608d // indirect
