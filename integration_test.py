@@ -56,28 +56,42 @@ def clone_flowgo_cmd():
         return
     print("version of flow-go missing")
 
+
+def build_flow():
+    build_flow_cmd = "make build-flow -C ./flow-go/integration/localnet"
+    subprocess.run(build_flow_cmd.split(" "), stdout=subprocess.PIPE)
+
 def init_localnet():
-    make_init_cmd = "make init -C ./flow-go/integration/localnet"
+    make_init_cmd = "make bootstrap -C ./flow-go/integration/localnet"
     subprocess.run(make_init_cmd.split(" "), stdout=subprocess.PIPE)
 
     start_localnet_cmd = "make start -C ./flow-go/integration/localnet"
     subprocess.run(start_localnet_cmd.split(" "), stdout=subprocess.PIPE)
 
+
 def init_flow_json():
     with open('flow.json', 'w') as json_file:
         json.dump(localnet_const, json_file, indent=4)
+
 
 def gen_contract_account(account_name):
     public_flow_key, public_rosetta_key, private_key = gen_account()
 
     create_account_cmd = "flow accounts create --sig-algo ECDSA_secp256k1 --key " + public_flow_key
     results = subprocess.run(create_account_cmd.split(" ") + localnet_flags + service_account_flags, stdout=subprocess.PIPE)
+
+    # Loop through the lines of the output and looks for a line that contains the word “Address”.
+    # This line should contain the address of the newly created account.
+    # Extract the address from the line and removes the “0x” prefix.
+    # Store the address in a variable named address
     for result in results.stdout.decode('utf-8').split("\n"):
         if "Address" in result:
             # need to strip the 0x in address
             address = result.split(" ")[-1][2:]
             break
 
+    # Create a dictionary that contains the address, key index, signature algorithm, hash algorithm, and private key
+    # of the new account. This dictionary follows a specific format that is compatible with flow.json.
     contract_account_value = {
         "address": address,
         "key": {
@@ -89,13 +103,19 @@ def gen_contract_account(account_name):
         }
     }
 
+    # Open flow.json in read and write mode and load its content as a JSON object.
+    # Add the new account to the JSON object under the key specified by account_name.
+    # Write back the modified JSON object to the file and truncate any remaining content.
     with open('flow.json', "r+") as json_file:
         data = json.load(json_file)
         data["accounts"][account_name] = contract_account_value
         json_file.seek(0)
         json.dump(data, json_file, indent=4)
         json_file.truncate()
-    
+
+    # Open account-keys.csv in append mode and write a line that contains the account name, public flow key,
+    # public rosetta key, private key, and address of the new account, separated by commas.
+    # This file is probably used to store and manage the keys for different accounts.
     with open('account-keys.csv', "a+") as file_object:
         file_object.write(account_name + "," + public_flow_key + "," + public_rosetta_key + "," + private_key + ",0x" + address + "\n")
 
@@ -434,12 +454,13 @@ def submit_transaction(signed_tx):
 
 
 def main():
-#     clone_flowgo_cmd()
-     init_localnet()
-#     init_flow_json()
-#     for i in range(1,number_of_contract_accounts+1):
-#         account_str = "root-originator-account-" + str(i)
-#         gen_contract_account(account_str)
+    # clone_flowgo_cmd()
+    build_flow()
+    init_localnet()
+    init_flow_json()
+    # for i in range(1,number_of_contract_accounts+1):
+    #     account_str = "root-originator-account-" + str(i)
+    #     gen_contract_account(account_str)
 #         deploy_contracts(account_str)
 #     setup_rosetta()
 #     seed_contract_accounts()

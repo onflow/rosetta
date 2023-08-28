@@ -28,5 +28,5 @@ integration-test-cleanup:
 	rm -rf data
 	rm -rf flow-go
 
-integration-test: integration-test-cleanup
+integration-test:
 	python3 integration_test.py
