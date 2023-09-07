@@ -57,7 +57,7 @@ type KeyValue = attribute.KeyValue
 
 // Counter creates an instrument for recording increasing values.
 func Counter(namespace string, name string) metric.Int64Counter {
-	meter := metric.MeterProvider().Meter("rosetta.flow."+namespace, meterOpts...)
+	meter := otel.Meter("rosetta.flow."+namespace, meterOpts...)
 	c, err := meter.Int64Counter(name)
 	if err != nil {
 		log.Fatalf("Failed to instantiate counter %s.%s: %s", namespace, name, err)
@@ -169,7 +169,6 @@ func Init(ctx context.Context) {
 			log.Fatalf("Failed to stop meter provider: %s", err)
 		}
 	})
-	otel.SetMeterProvider(meterProvider)
 }
 
 // NewSpan returns a new span for the given context.
