@@ -19,8 +19,6 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/metric/global"
-	"go.opentelemetry.io/otel/metric/instrument"
 	provider "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -58,8 +56,8 @@ type Span = trace.Span
 type KeyValue = attribute.KeyValue
 
 // Counter creates an instrument for recording increasing values.
-func Counter(namespace string, name string) instrument.Int64Counter {
-	meter := global.MeterProvider().Meter("rosetta.flow."+namespace, meterOpts...)
+func Counter(namespace string, name string) metric.Int64Counter {
+	meter := metric.MeterProvider().Meter("rosetta.flow."+namespace, meterOpts...)
 	c, err := meter.Int64Counter(name)
 	if err != nil {
 		log.Fatalf("Failed to instantiate counter %s.%s: %s", namespace, name, err)
@@ -92,8 +90,8 @@ func EndSpanOk(span trace.Span) {
 }
 
 // Gauge creates an instrument for recording the current value.
-func Gauge(namespace string, name string) instrument.Int64ObservableGauge {
-	meter := global.Meter("rosetta.flow."+namespace, meterOpts...)
+func Gauge(namespace string, name string) metric.Int64ObservableGauge {
+	meter := otel.Meter("rosetta.flow."+namespace, meterOpts...)
 	c, err := meter.Int64ObservableGauge(name)
 	if err != nil {
 		log.Fatalf("Failed to instantiate guage %s.%s: %s", namespace, name, err)
@@ -114,8 +112,8 @@ func Hexify(key string, val []byte) attribute.KeyValue {
 }
 
 // Histogram creates an instrument for recording a distribution of values.
-func Histogram(namespace string, name string) instrument.Int64Histogram {
-	meter := global.Meter("rosetta.flow."+namespace, meterOpts...)
+func Histogram(namespace string, name string) metric.Int64Histogram {
+	meter := otel.Meter("rosetta.flow."+namespace, meterOpts...)
 	c, err := meter.Int64Histogram(name)
 	if err != nil {
 		log.Fatalf("Failed to instantiate histogram %s.%s: %s", namespace, name, err)
@@ -171,7 +169,7 @@ func Init(ctx context.Context) {
 			log.Fatalf("Failed to stop meter provider: %s", err)
 		}
 	})
-	global.SetMeterProvider(meterProvider)
+	otel.SetMeterProvider(meterProvider)
 }
 
 // NewSpan returns a new span for the given context.
@@ -190,8 +188,8 @@ func Uint64(key string, val uint64) attribute.KeyValue {
 }
 
 // UpDownCounter creates an instrument for recording changes of a value.
-func UpDownCounter(namespace string, name string) instrument.Int64UpDownCounter {
-	meter := global.Meter("rosetta.flow."+namespace, meterOpts...)
+func UpDownCounter(namespace string, name string) metric.Int64UpDownCounter {
+	meter := otel.Meter("rosetta.flow."+namespace, meterOpts...)
 	c, err := meter.Int64UpDownCounter(name)
 	if err != nil {
 		log.Fatalf("Failed to instantiate up/down counter %s.%s: %s", namespace, name, err)
