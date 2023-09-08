@@ -3,6 +3,8 @@ package cache
 
 import (
 	"context"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 
 	"github.com/dgraph-io/badger/v3"
 	"github.com/golang/protobuf/proto"
@@ -58,15 +60,20 @@ func (s *Store) InterceptUnary(ctx context.Context, method string, req, res inte
 	attrs := []trace.KeyValue{
 		trace.String("method", trace.GetMethodName(method)),
 	}
+
 	callerID := ""
 	caller := ctx.Value(callerContextKey)
 	if caller != nil {
 		callerID = caller.(string)
 		attrs = append(attrs, trace.String("caller", callerID))
 	}
+
+	attrSet := attribute.NewSet(attrs...)
+	mOpt := metric.WithAttributeSet(attrSet)
+
 	skip := ctx.Value(skipContextKey)
 	if skip != nil {
-		cacheSkip.Add(ctx, 1, attrs...)
+		cacheSkip.Add(ctx, 1, mOpt)
 		return invoker(ctx, method, req, res, cc, opts...)
 	}
 	// NOTE(tav): Since protobuf doesn't provide any guarantees of deterministic
@@ -75,13 +82,13 @@ func (s *Store) InterceptUnary(ctx context.Context, method string, req, res inte
 	enc, err := proto.Marshal(req.(proto.Message))
 	if err != nil {
 		log.Errorf("Failed to encode the gRPC request for caching: %s", err)
-		cacheMiss.Add(ctx, 1, attrs...)
+		cacheMiss.Add(ctx, 1, mOpt)
 		return invoker(ctx, method, req, res, cc, opts...)
 	}
 	hash, err := getHash(method, enc)
 	if err != nil {
 		log.Errorf("Failed to hash the gRPC request for caching: %s", err)
-		cacheMiss.Add(ctx, 1, attrs...)
+		cacheMiss.Add(ctx, 1, mOpt)
 		return invoker(ctx, method, req, res, cc, opts...)
 	}
 	select {
@@ -111,7 +118,7 @@ func (s *Store) InterceptUnary(ctx context.Context, method string, req, res inte
 				)
 			}
 		}
-		cacheHit.Add(ctx, 1, attrs...)
+		cacheHit.Add(ctx, 1, mOpt)
 		return nil
 	}
 	if err != badger.ErrKeyNotFound {
@@ -125,10 +132,10 @@ func (s *Store) InterceptUnary(ctx context.Context, method string, req, res inte
 	if err != nil {
 		trace.EndSpanErrorf(span, "failed")
 		attrs = append(attrs, trace.Bool("error_response", true))
-		cacheMiss.Add(ctx, 1, attrs...)
+		cacheMiss.Add(ctx, 1, mOpt)
 		return err
 	}
-	cacheMiss.Add(ctx, 1, attrs...)
+	cacheMiss.Add(ctx, 1, mOpt)
 	trace.EndSpanOk(span)
 	val, err := proto.Marshal(res.(proto.Message))
 	if err != nil {
