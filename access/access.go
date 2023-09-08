@@ -7,6 +7,8 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"fmt"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"math/rand"
 	"strconv"
 	"strings"
@@ -533,7 +535,11 @@ func InterceptRateLimitUnary(ctx context.Context, method string, req, res interf
 				trace.String("method", trace.GetMethodName(method)),
 				trace.String("server", cc.Target()),
 			}
-			rateLimitReached.Add(ctx, 1, attrs...)
+
+			attrSet := attribute.NewSet(attrs...)
+			mOpt := metric.WithAttributeSet(attrSet)
+
+			rateLimitReached.Add(ctx, 1, mOpt)
 			return status.Errorf(codes.ResourceExhausted, rateLimitText)
 		}
 	}
