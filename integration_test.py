@@ -455,25 +455,25 @@ def submit_transaction(signed_tx):
 
 def main():
     # clone_flowgo_cmd()
-    build_flow()
-    init_localnet()
-    init_flow_json()
-    # for i in range(1,number_of_contract_accounts+1):
-    #     account_str = "root-originator-account-" + str(i)
-    #     gen_contract_account(account_str)
-#         deploy_contracts(account_str)
-#     setup_rosetta()
-#     seed_contract_accounts()
-#
-#     _, _, _, root_address = get_account_keys("root-originator-account-1")
-#     rosetta_create_account(root_address, "root-originator-account-1")
-#     rosetta_create_proxy_account(root_address, "root-originator-account-1")
-#     _, _, _, new_address = get_account_keys("root-originator-account-1-create_account")
-#     rosetta_transfer(root_address, new_address, 50)
-#     _, _, _, new_proxy_address = get_account_keys("root-originator-account-1-create_proxy_account")
-#     rosetta_transfer(root_address, new_proxy_address, 50)
-#     _, _, _, flow_account_address = get_account_keys("flow-account")
-#     rosetta_proxy_transfer(new_proxy_address, flow_account_address, root_address, 10)
+    # build_flow()
+    # init_localnet()
+    # init_flow_json()
+    for i in range(1,number_of_contract_accounts+1):
+        account_str = "root-originator-account-" + str(i)
+        gen_contract_account(account_str)
+        deploy_contracts(account_str)
+    setup_rosetta()
+    seed_contract_accounts()
+
+    _, _, _, root_address = get_account_keys("root-originator-account-1")
+    rosetta_create_account(root_address, "root-originator-account-1")
+    rosetta_create_proxy_account(root_address, "root-originator-account-1")
+    _, _, _, new_address = get_account_keys("root-originator-account-1-create_account")
+    rosetta_transfer(root_address, new_address, 50)
+    _, _, _, new_proxy_address = get_account_keys("root-originator-account-1-create_proxy_account")
+    rosetta_transfer(root_address, new_proxy_address, 50)
+    _, _, _, flow_account_address = get_account_keys("flow-account")
+    rosetta_proxy_transfer(new_proxy_address, flow_account_address, root_address, 10)
 
 
 if __name__ == "__main__":
