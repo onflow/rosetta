@@ -338,8 +338,6 @@ outer:
 				continue
 			}
 			sealedResult, foundOk := i.sealedResults[string(hash)]
-			// NOTE(tav): Skip the execution result check for the root block of
-			// a spork as it is self-sealed.
 			if spork.Prev != nil && height == spork.RootBlock {
 				sealedResult, foundOk = string(resultID[:]), true
 			}

@@ -79,8 +79,8 @@ func TestVerifyExecutionResultHash(t *testing.T) {
 }
 
 func TestDeriveEventsHash(t *testing.T) {
-	var startBlockHeight uint64 = 55114467
-	var endBlockHeight uint64 = 55114469
+	var startBlockHeight uint64 = 55114469
+	var endBlockHeight uint64 = 55114478
 	ctx := context.Background()
 	spork, err := createSpork(ctx)
 	if err != nil {
