@@ -130,10 +130,13 @@ def gen_contract_account(account_name):
     with open('account-keys.csv', "a+") as file_object:
         file_object.write(account_name + "," + public_flow_key + "," + public_rosetta_key + "," + private_key + ",0x" + address + "\n")
 
+
 def deploy_contracts(account_name):
     contract_path = "./script/cadence/contracts/FlowColdStorageProxy.cdc"
-    deploy_contract_cmd = "flow accounts add-contract --signer " + account_name + " FlowColdStorageProxy " + contract_path
+    deploy_contract_cmd = ("flow accounts add-contract " + contract_path + " --signer "
+                           + account_name + " FlowColdStorageProxy -f flow.json")
     cmds = deploy_contract_cmd.split(" ") + benchnet2_flags
+
     result = subprocess.run(cmds, stdout=subprocess.PIPE)
     print(result.stdout.decode('utf-8'))
 
