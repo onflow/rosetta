@@ -1,10 +1,12 @@
 package state
 
 import (
+	"bytes"
 	"context"
 	"testing"
 
 	"github.com/onflow/flow-go/model/flow"
+	"github.com/onflow/flow/protobuf/go/flow/entities"
 	"github.com/onflow/rosetta/access"
 	"github.com/onflow/rosetta/config"
 	"github.com/stretchr/testify/assert"
@@ -78,8 +80,8 @@ func TestVerifyExecutionResultHash(t *testing.T) {
 }
 
 func TestDeriveEventsHash(t *testing.T) {
-	var startBlockHeight uint64 = 55114467
-	var endBlockHeight uint64 = 55114469
+	var startBlockHeight uint64 = 55114469
+	var endBlockHeight uint64 = 55114478
 	ctx := context.Background()
 	spork, err := createSpork(ctx)
 	if err != nil {
@@ -88,24 +90,30 @@ func TestDeriveEventsHash(t *testing.T) {
 	client := spork.AccessNodes.Client()
 	for blockHeight := startBlockHeight; blockHeight < endBlockHeight; blockHeight++ {
 		block, err := client.BlockByHeight(ctx, blockHeight)
+		txns, err := client.TransactionsByBlockID(ctx, block.Id)
+		assert.NoError(t, err)
+		txnResults, err := client.TransactionResultsByBlockID(ctx, block.Id)
 		assert.NoError(t, err)
 		cols := []*collectionData{}
-		eventHashes := []flow.Identifier{}
-		txnIndex := -1
-		for _, col := range block.CollectionGuarantees {
-			colData := &collectionData{}
-			info, err := client.CollectionByID(ctx, col.CollectionId)
-			assert.NoError(t, err)
-			for _, txnHash := range info.TransactionIds {
-				info, err := client.Transaction(ctx, txnHash)
-				assert.NoError(t, err)
-				txnResult, err := client.TransactionResult(ctx, block.Id, uint32(txnIndex))
-				txnIndex++
-				colData.txns = append(colData.txns, info)
-				colData.txnResults = append(colData.txnResults, txnResult)
+		col := &collectionData{}
+		cols = append(cols, col)
+		prev := []byte{}
+		txnLen := len(txns)
+		for idx, result := range txnResults {
+			if idx != 0 {
+				if !bytes.Equal(result.CollectionId, prev) {
+					col = &collectionData{}
+					cols = append(cols, col)
+				}
 			}
-			cols = append(cols, colData)
+			if idx < txnLen {
+				col.txns = append(col.txns, txns[idx])
+			}
+			col.txnResults = append(col.txnResults, result)
+			prev = result.CollectionId
 		}
+		cols[len(cols)-1].system = true
+		eventHashes := []flow.Identifier{}
 		for _, col := range cols {
 			colEvents := []flowEvent{}
 			for _, txnResult := range col.txnResults {
@@ -121,6 +129,14 @@ func TestDeriveEventsHash(t *testing.T) {
 				}
 			}
 			hash := deriveEventsHash(spork, colEvents)
+			eventHashes = append(eventHashes, hash)
+		}
+		var execResult *entities.ExecutionResult
+		execResult, err = client.ExecutionResultForBlockID(ctx, block.Id)
+		assert.NoError(t, err)
+		for idx, eventHash := range eventHashes {
+			chunk := execResult.Chunks[idx]
+			assert.Equal(t, eventHash[:], chunk.EventCollection)
 		}
 	}
 }
