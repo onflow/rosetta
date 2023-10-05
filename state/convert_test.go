@@ -141,7 +141,7 @@ func TestDeriveEventsHash(t *testing.T) {
 }
 
 func createSpork(ctx context.Context) (*config.Spork, error) {
-	addr := "access-001.mainnet23.nodes.onflow.org:9000"
+	addr := accessAddr
 	pool := access.New(ctx, []access.NodeConfig{{Address: addr}}, nil)
 	chain := &config.Chain{Network: "mainnet"}
 	return &config.Spork{
