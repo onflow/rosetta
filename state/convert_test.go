@@ -12,10 +12,12 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+var accessAddr = "access-001.canary1.nodes.onflow.org:9000"
+var startBlockHeight uint64 = 59789556
+var endBlockHeight uint64 = 59789546
+
 func TestVerifyBlockHash(t *testing.T) {
 	// load mainnet config and get blocks exactly as state.go
-	var startBlockHeight uint64 = 55114467
-	var endBlockHeight uint64 = 55114568
 	ctx := context.Background()
 	spork, err := createSpork(ctx)
 	if err != nil {
@@ -36,8 +38,6 @@ func TestVerifyBlockHash(t *testing.T) {
 }
 
 func TestVerifyExecutionResultHash(t *testing.T) {
-	var startBlockHeight uint64 = 55114467
-	var endBlockHeight uint64 = 55114568
 	ctx := context.Background()
 	spork, err := createSpork(ctx)
 	if err != nil {
@@ -80,8 +80,6 @@ func TestVerifyExecutionResultHash(t *testing.T) {
 }
 
 func TestDeriveEventsHash(t *testing.T) {
-	var startBlockHeight uint64 = 55114469
-	var endBlockHeight uint64 = 55114478
 	ctx := context.Background()
 	spork, err := createSpork(ctx)
 	if err != nil {
@@ -142,9 +140,9 @@ func TestDeriveEventsHash(t *testing.T) {
 }
 
 func createSpork(ctx context.Context) (*config.Spork, error) {
-	addr := "access-001.mainnet23.nodes.onflow.org:9000"
+	addr := accessAddr
 	pool := access.New(ctx, []access.NodeConfig{{Address: addr}}, nil)
-	chain := &config.Chain{Network: "mainnet"}
+	chain := &config.Chain{Network: "canary"}
 	return &config.Spork{
 		Version:     5,
 		Chain:       chain,
