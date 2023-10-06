@@ -13,8 +13,8 @@ import (
 )
 
 var accessAddr = "access-001.canary1.nodes.onflow.org:9000"
-var startBlockHeight uint64 = 59789546
-var endBlockHeight uint64 = 59789556
+var startBlockHeight uint64 = 59789556
+var endBlockHeight uint64 = 59789558
 
 func TestVerifyBlockHash(t *testing.T) {
 	// load mainnet config and get blocks exactly as state.go
@@ -44,7 +44,7 @@ func TestVerifyExecutionResultHash(t *testing.T) {
 		assert.Fail(t, err.Error())
 	}
 	client := spork.AccessNodes.Client()
-	var sealedResults map[string]string
+	sealedResults := make(map[string]string)
 	for blockHeight := startBlockHeight; blockHeight < endBlockHeight; blockHeight++ {
 		block, err := client.BlockByHeight(ctx, blockHeight)
 		if err != nil {
