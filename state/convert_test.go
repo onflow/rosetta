@@ -33,6 +33,7 @@ func TestVerifyBlockHash(t *testing.T) {
 		if err != nil {
 			assert.Fail(t, err.Error())
 		}
+
 		assert.True(t, verifyBlockHash(spork, block.Id, blockHeight, blockHeader, block))
 	}
 }
