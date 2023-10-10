@@ -10,31 +10,36 @@ import (
 	"github.com/onflow/rosetta/access"
 	"github.com/onflow/rosetta/config"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-var accessAddr = "access-001.canary1.nodes.onflow.org:9000"
-var startBlockHeight uint64 = 59789556
-var endBlockHeight uint64 = 59789558
+//var accessAddr = "access-001.canary1.nodes.onflow.org:9000"
+//var startBlockHeight uint64 = 59789556
+//var endBlockHeight uint64 = 59789558
+
+var accessAddr = "access-001.mainnet23.nodes.onflow.org:9000"
+var startBlockHeight uint64 = 55114468
+var endBlockHeight uint64 = 55114470
 
 func TestVerifyBlockHash(t *testing.T) {
 	// load mainnet config and get blocks exactly as state.go
 	ctx := context.Background()
 	spork, err := createSpork(ctx)
 	if err != nil {
-		assert.Fail(t, err.Error())
+		require.Fail(t, err.Error())
 	}
 	client := spork.AccessNodes.Client()
 	for blockHeight := startBlockHeight; blockHeight < endBlockHeight; blockHeight++ {
 		block, err := client.BlockByHeight(ctx, blockHeight)
 		if err != nil {
-			assert.Fail(t, err.Error())
+			require.Fail(t, err.Error())
 		}
 		blockHeader, err := client.BlockHeaderByHeight(ctx, blockHeight)
 		if err != nil {
-			assert.Fail(t, err.Error())
+			require.Fail(t, err.Error())
 		}
 
-		assert.True(t, verifyBlockHash(spork, block.Id, blockHeight, blockHeader, block))
+		require.True(t, verifyBlockHash(spork, block.Id, blockHeight, blockHeader, block))
 	}
 }
 
@@ -42,18 +47,18 @@ func TestVerifyExecutionResultHash(t *testing.T) {
 	ctx := context.Background()
 	spork, err := createSpork(ctx)
 	if err != nil {
-		assert.Fail(t, err.Error())
+		require.Fail(t, err.Error())
 	}
 	client := spork.AccessNodes.Client()
 	sealedResults := make(map[string]string)
 	for blockHeight := startBlockHeight; blockHeight < endBlockHeight; blockHeight++ {
 		block, err := client.BlockByHeight(ctx, blockHeight)
 		if err != nil {
-			assert.Fail(t, err.Error())
+			require.Fail(t, err.Error())
 		}
 		execResult, err := client.ExecutionResultForBlockID(ctx, block.Id)
 		if err != nil {
-			assert.Fail(t, err.Error())
+			require.Fail(t, err.Error())
 		}
 		for _, seal := range block.BlockSeals {
 			sealedResults[string(seal.BlockId)] = string(seal.ResultId)
@@ -69,12 +74,12 @@ func TestVerifyExecutionResultHash(t *testing.T) {
 			resultIDV5 = deriveExecutionResultV5(execV5)
 		}
 		if !ok && !okV5 {
-			assert.Fail(t, "unable to covert from either hash")
+			require.Fail(t, "unable to covert from either hash")
 		}
 		sealedResult, foundOk := sealedResults[string(block.Id)]
 		if foundOk {
 			if string(resultID[:]) != sealedResult && string(resultIDV5[:]) != sealedResult {
-				assert.Fail(t, "target error")
+				require.Fail(t, "target error")
 			}
 		}
 	}
@@ -90,9 +95,9 @@ func TestDeriveEventsHash(t *testing.T) {
 	for blockHeight := startBlockHeight; blockHeight < endBlockHeight; blockHeight++ {
 		block, err := client.BlockByHeight(ctx, blockHeight)
 		txns, err := client.TransactionsByBlockID(ctx, block.Id)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		txnResults, err := client.TransactionResultsByBlockID(ctx, block.Id)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		cols := []*collectionData{}
 		col := &collectionData{}
 		cols = append(cols, col)
@@ -132,11 +137,11 @@ func TestDeriveEventsHash(t *testing.T) {
 		}
 		var execResult *entities.ExecutionResult
 		execResult, err = client.ExecutionResultForBlockID(ctx, block.Id)
-		assert.NoError(t, err)
-		assert.Equal(t, len(eventHashes), len(execResult.Chunks))
+		require.NoError(t, err)
+		require.Equal(t, len(eventHashes), len(execResult.Chunks))
 		for idx, eventHash := range eventHashes {
 			chunk := execResult.Chunks[idx]
-			assert.Equal(t, eventHash[:], chunk.EventCollection)
+			require.Equal(t, eventHash[:], chunk.EventCollection)
 		}
 	}
 }
@@ -144,6 +149,7 @@ func TestDeriveEventsHash(t *testing.T) {
 func createSpork(ctx context.Context) (*config.Spork, error) {
 	addr := accessAddr
 	pool := access.New(ctx, []access.NodeConfig{{Address: addr}}, nil)
+	//chain := &config.Chain{Network: "canary"}
 	chain := &config.Chain{Network: "mainnet"}
 	return &config.Spork{
 		Version:     5,
