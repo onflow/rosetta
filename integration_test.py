@@ -31,7 +31,7 @@ localnet_const = {
 
 number_of_contract_accounts = 2
 # localnet_flags = ['-n', 'localnet']
-benchnet2_flags = ['--host', 'access1-misha-rosetta1-02oct.benchnet.onflow.org:80']
+benchnet2_flags = ['--host', 'access1-misha-rosetta-16oct.benchnet.onflow.org:80']
 service_account_flags = ['-f', 'flow.json', '--signer', 'benchnet-account']
 rosetta_host_url = "http://127.0.0.1:8080"
 
