@@ -467,6 +467,8 @@ func verifyBlockHash(spork *config.Spork, hash []byte, height uint64, hdr *entit
 	chainID := flow.ChainID("flow-" + spork.Chain.Network)
 	if spork.Chain.Network == "canary" {
 		chainID = flow.ChainID("flow-benchnet")
+	} else if spork.Chain.Network == "emulator" {
+		chainID = flow.ChainID("flow-benchnet")
 	}
 
 	var lastViewTC *flow.TimeoutCertificate
