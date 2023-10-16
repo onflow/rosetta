@@ -305,7 +305,6 @@ outer:
 				continue
 			}
 			for idx, _ := range eventHashes {
-				//for idx, eventHash := range eventHashes {
 				chunk := execResult.Chunks[idx]
 				if chunk == nil {
 					log.Errorf(

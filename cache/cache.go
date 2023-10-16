@@ -60,7 +60,6 @@ func (s *Store) InterceptUnary(ctx context.Context, method string, req, res inte
 	attrs := []trace.KeyValue{
 		trace.String("method", trace.GetMethodName(method)),
 	}
-
 	callerID := ""
 	caller := ctx.Value(callerContextKey)
 	if caller != nil {
