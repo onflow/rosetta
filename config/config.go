@@ -207,7 +207,7 @@ func (c *chainConfig) parseAndValidateNetwork(result *Chain) {
 	if c.Network == "" {
 		log.Fatalf("Missing .network value in %s", c.filename)
 	}
-	if !(c.Network == "mainnet" || c.Network == "testnet" || c.Network == "canary" || c.Network == "localnet") {
+	if !(c.Network == "mainnet" || c.Network == "testnet" || c.Network == "canary" || c.Network == "localnet" || c.Network == "emulator") {
 		log.Fatalf(
 			"Invalid config value for .network in %s: %q",
 			c.filename, c.Network,
