@@ -91,6 +91,21 @@
             ],
             "root_block": 90595736,
             "version": 5
+        },
+        "47": {
+            "access_nodes": [
+                {
+                    "address": "access-001.devnet47.nodes.onflow.org:9000"
+                },
+                {
+                    "address": "access-002.devnet47.nodes.onflow.org:9000"
+                },
+                {
+                    "address": "access-003.devnet47.nodes.onflow.org:9000"
+                }
+            ],
+            "root_block": 113167876,
+            "version": 5
         }
     }
 }
