@@ -11,7 +11,8 @@
       "flow_token": "0ae53cb6e3f42a79",
       "fungible_token": "ee82856bf20e2aa6"
   },
-  "data_dir": "/data",
+  "data_dir": "./data",
+  "disable_consensus_follower": true,
   "network": "canary",
   "originators": [
   ],
@@ -19,14 +20,14 @@
   "spork_seal_tolerance": 10000,
   "spork_synced_tolerance": 10,
   "sporks": {
-      "28": {
+      "1": {
           "access_nodes": [
               {
                   "address": "access.canary.nodes.onflow.org:9000"
               }
           ],
-          "root_block": 8379391,
-          "version": 4
+          "root_block": 64552096,
+          "version": 6
       }
   }
 }
