@@ -165,8 +165,9 @@ func (c Client) BlockEvents(ctx context.Context, blockID []byte, typ string) ([]
 	resp, err := c.client.GetEventsForBlockIDs(
 		ctx,
 		&access.GetEventsForBlockIDsRequest{
-			BlockIds: [][]byte{blockID},
-			Type:     typ,
+			BlockIds:             [][]byte{blockID},
+			Type:                 typ,
+			EventEncodingVersion: entities.EventEncodingVersion_CCF_V0,
 		},
 	)
 	cancel()
@@ -386,7 +387,8 @@ func (c Client) Transaction(ctx context.Context, hash []byte) (*entities.Transac
 	resp, err := c.client.GetTransaction(
 		ctx,
 		&access.GetTransactionRequest{
-			Id: hash,
+			Id:                   hash,
+			EventEncodingVersion: entities.EventEncodingVersion_CCF_V0,
 		},
 	)
 	cancel()
@@ -406,8 +408,9 @@ func (c Client) TransactionResult(ctx context.Context, blockID []byte, txnIndex 
 	resp, err := c.client.GetTransactionResultByIndex(
 		ctx,
 		&access.GetTransactionByIndexRequest{
-			BlockId: blockID,
-			Index:   txnIndex,
+			BlockId:              blockID,
+			Index:                txnIndex,
+			EventEncodingVersion: entities.EventEncodingVersion_CCF_V0,
 		},
 	)
 	cancel()
@@ -428,7 +431,8 @@ func (c Client) TransactionResultByHash(ctx context.Context, hash []byte) (*acce
 	resp, err := c.client.GetTransactionResult(
 		ctx,
 		&access.GetTransactionRequest{
-			Id: hash,
+			Id:                   hash,
+			EventEncodingVersion: entities.EventEncodingVersion_CCF_V0,
 		},
 	)
 	cancel()
@@ -453,7 +457,8 @@ func (c Client) TransactionResultsByBlockID(ctx context.Context, blockID []byte)
 	resp, err := c.client.GetTransactionResultsByBlockID(
 		ctx,
 		&access.GetTransactionsByBlockIDRequest{
-			BlockId: blockID,
+			BlockId:              blockID,
+			EventEncodingVersion: entities.EventEncodingVersion_CCF_V0,
 		},
 	)
 	cancel()
@@ -473,7 +478,8 @@ func (c Client) TransactionsByBlockID(ctx context.Context, blockID []byte) ([]*e
 	resp, err := c.client.GetTransactionsByBlockID(
 		ctx,
 		&access.GetTransactionsByBlockIDRequest{
-			BlockId: blockID,
+			BlockId:              blockID,
+			EventEncodingVersion: entities.EventEncodingVersion_CCF_V0,
 		},
 	)
 	cancel()
