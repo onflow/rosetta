@@ -485,7 +485,6 @@ def main():
     # rosetta_create_account(root_address, "root-originator-account-1")
     # rosetta_create_proxy_account(root_address, "root-originator-account-1")
     # _, _, _, new_address = get_account_keys("root-originator-account-1-create_account")
-    # print("new_address" + new_address)
 
     # rosetta_transfer(root_address, new_address, 50)
     # _, _, _, new_proxy_address = get_account_keys("root-originator-account-1-create_proxy_account")
