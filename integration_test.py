@@ -47,7 +47,7 @@ def clone_flowgo_cmd():
             repo = split[0][1:]
             full_version = split[1][:-1]
             # Split the branch name to get the tag part
-            #tag = full_version.split('-')[0] //TODO: v0.33.2 was removed
+            #tag = full_version.split('-')[0] //TODO: update to discussed, tag v0.33.2 was removed
             tag ="v0.33.9"
             print(tag)
             cmd = "git clone -b " + tag + " --single-branch https://" + repo + ".git"
@@ -482,16 +482,16 @@ def main():
 
     _, _, _, root_address = get_account_keys("root-originator-account-1")
     print("root_address" + root_address)
-    #rosetta_create_account(root_address, "root-originator-account-1")
-    #rosetta_create_proxy_account(root_address, "root-originator-account-1")
-    #_, _, _, new_address = get_account_keys("root-originator-account-1-create_account")
-    #print("new_address" + new_address)
+    # rosetta_create_account(root_address, "root-originator-account-1")
+    # rosetta_create_proxy_account(root_address, "root-originator-account-1")
+    # _, _, _, new_address = get_account_keys("root-originator-account-1-create_account")
+    # print("new_address" + new_address)
 
-#     rosetta_transfer(root_address, new_address, 50)
-#     _, _, _, new_proxy_address = get_account_keys("root-originator-account-1-create_proxy_account")
-#     rosetta_transfer(root_address, new_proxy_address, 50)
-#     _, _, _, flow_account_address = get_account_keys("flow-account")
-#     rosetta_proxy_transfer(new_proxy_address, flow_account_address, root_address, 10)
+    # rosetta_transfer(root_address, new_address, 50)
+    # _, _, _, new_proxy_address = get_account_keys("root-originator-account-1-create_proxy_account")
+    # rosetta_transfer(root_address, new_proxy_address, 50)
+    # _, _, _, flow_account_address = get_account_keys("flow-account")
+    # rosetta_proxy_transfer(new_proxy_address, flow_account_address, root_address, 10)
 
 
 if __name__ == "__main__":
