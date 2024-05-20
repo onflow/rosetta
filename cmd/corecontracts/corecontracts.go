@@ -21,7 +21,6 @@ func main() {
 	for _, network := range []flow.ChainID{
 		flow.Mainnet,
 		flow.Testnet,
-		//flow.Canary,
 		flow.Localnet,
 		flow.Emulator,
 	} {

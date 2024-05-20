@@ -20,21 +20,19 @@ localnet_const = {
 			"address": "f8d6e0586b0a20c7",
 			"key":{
 				"type": "hex",
-        "index": 0,
-        "signatureAlgorithm": "ECDSA_P256",
-        "hashAlgorithm": "SHA2_256",
-        "privateKey": "8ae3d0461cfed6d6f49bfc25fa899351c39d1bd21fdba8c87595b6c49bb4cc43"
+                "index": 0,
+                "signatureAlgorithm": "ECDSA_P256",
+                "hashAlgorithm": "SHA2_256",
+                "privateKey": "8ae3d0461cfed6d6f49bfc25fa899351c39d1bd21fdba8c87595b6c49bb4cc43"
 			}
 		}
 	}
 }
 
 number_of_contract_accounts = 2
-# localnet_flags = ['-n', 'localnet']
-benchnet2_flags = ['--host', 'access1-misha-rosetta-16oct.benchnet.onflow.org:80']
-service_account_flags = ['-f', 'flow.json', '--signer', 'benchnet-account']
+localnet_flags = ['-n', 'localnet']
+service_account_flags = ['-f', 'flow.json', '--signer', 'localnet-service-account']
 rosetta_host_url = "http://127.0.0.1:8080"
-
 
 ######################################################################################
 ### Setup Flow-Go + Localnet + Rosetta
@@ -47,8 +45,12 @@ def clone_flowgo_cmd():
         if "/onflow/flow-go " in line:
             split = line.split(" ")
             repo = split[0][1:]
-            version = split[1][:-1]
-            cmd = "git clone -b " + version + " --single-branch https://" + repo + ".git"
+            full_version = split[1][:-1]
+            # Split the branch name to get the tag part
+            #tag = full_version.split('-')[0] //TODO: v0.33.2 was removed
+            tag ="v0.33.9"
+            print(tag)
+            cmd = "git clone -b " + tag + " --single-branch https://" + repo + ".git"
     print(cmd)
     if cmd:
         subprocess.run(cmd.split(" "), stdout=subprocess.PIPE)
@@ -59,7 +61,7 @@ def clone_flowgo_cmd():
 
 
 def build_flow():
-    build_flow_cmd = "make build-flow -C ./flow-go/integration/localnet"
+    build_flow_cmd = "make docker-native-build-flow -C ./flow-go"
     subprocess.run(build_flow_cmd.split(" "), stdout=subprocess.PIPE)
 
 def init_localnet():
@@ -83,13 +85,12 @@ def gen_contract_account(account_name):
     create_account_cmd = "flow accounts create --sig-algo ECDSA_secp256k1 --key " + public_flow_key
 
     # store the list of arguments in a variable
-    args = create_account_cmd.split(" ") + benchnet2_flags + service_account_flags
+    #args = create_account_cmd.split(" ") + benchnet2_flags + service_account_flags
+    args = create_account_cmd.split(" ") + localnet_flags + service_account_flags
     print(f"create account command: {args}")
-
-    #results = subprocess.run(create_account_cmd.split(" ") + localnet_flags + service_account_flags, stdout=subprocess.PIPE)
     results = subprocess.run(args, stdout=subprocess.PIPE)
 
-    print("\nresults=", results.stdout.decode("utf-8"))
+    #results = subprocess.run(create_account_cmd.split(" ") + localnet_flags + service_account_flags, stdout=subprocess.PIPE)
 
     # Loop through the lines of the output and looks for a line that contains the word “Address”.
     # This line should contain the address of the newly created account.
@@ -135,7 +136,7 @@ def deploy_contracts(account_name):
     contract_path = "./script/cadence/contracts/FlowColdStorageProxy.cdc"
     deploy_contract_cmd = ("flow accounts add-contract " + contract_path + " --signer "
                            + account_name + " FlowColdStorageProxy -f flow.json")
-    cmds = deploy_contract_cmd.split(" ") + benchnet2_flags
+    cmds = deploy_contract_cmd.split(" ") + localnet_flags
 
     result = subprocess.run(cmds, stdout=subprocess.PIPE)
     print(result.stdout.decode('utf-8'))
@@ -150,7 +151,7 @@ def seed_contract_accounts():
         for row in reader:
             address = row[-1]
             seed_cmd = "flow transactions send script/cadence/transactions/basic-transfer.cdc " + address + " 100.0 --signer localnet-service-account"
-            cmds = seed_cmd.split(" ") + benchnet2_flags
+            cmds = seed_cmd.split(" ") + localnet_flags
             result = subprocess.run(cmds, stdout=subprocess.PIPE)
 
 
@@ -468,26 +469,29 @@ def submit_transaction(signed_tx):
 
 
 def main():
-    # clone_flowgo_cmd()
-    # build_flow()
-    # init_localnet()
-    # init_flow_json()
+    clone_flowgo_cmd()
+    build_flow()
+    init_localnet()
+    init_flow_json()
     for i in range(1,number_of_contract_accounts+1):
-        account_str = "root-originator-account-" + str(i)
-        gen_contract_account(account_str)
-        deploy_contracts(account_str)
-    # setup_rosetta()
-    # seed_contract_accounts()
-    #
-    # _, _, _, root_address = get_account_keys("root-originator-account-1")
-    # rosetta_create_account(root_address, "root-originator-account-1")
-    # rosetta_create_proxy_account(root_address, "root-originator-account-1")
-    # _, _, _, new_address = get_account_keys("root-originator-account-1-create_account")
-    # rosetta_transfer(root_address, new_address, 50)
-    # _, _, _, new_proxy_address = get_account_keys("root-originator-account-1-create_proxy_account")
-    # rosetta_transfer(root_address, new_proxy_address, 50)
-    # _, _, _, flow_account_address = get_account_keys("flow-account")
-    # rosetta_proxy_transfer(new_proxy_address, flow_account_address, root_address, 10)
+         account_str = "root-originator-account-" + str(i)
+         gen_contract_account(account_str)
+         deploy_contracts(account_str)
+    setup_rosetta()
+    seed_contract_accounts()
+
+    _, _, _, root_address = get_account_keys("root-originator-account-1")
+    print("root_address" + root_address)
+    #rosetta_create_account(root_address, "root-originator-account-1")
+    #rosetta_create_proxy_account(root_address, "root-originator-account-1")
+    #_, _, _, new_address = get_account_keys("root-originator-account-1-create_account")
+    #print("new_address" + new_address)
+
+#     rosetta_transfer(root_address, new_address, 50)
+#     _, _, _, new_proxy_address = get_account_keys("root-originator-account-1-create_proxy_account")
+#     rosetta_transfer(root_address, new_proxy_address, 50)
+#     _, _, _, flow_account_address = get_account_keys("flow-account")
+#     rosetta_proxy_transfer(new_proxy_address, flow_account_address, root_address, 10)
 
 
 if __name__ == "__main__":

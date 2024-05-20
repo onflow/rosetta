@@ -2,7 +2,7 @@
     "cache": false,
     "construction_access_nodes": [
         {
-            "address": "access1-misha-rosetta1-04oct.benchnet.onflow.org:80"
+            "address": "127.0.0.1:4001"
         }
     ],
     "contracts": {
@@ -13,7 +13,7 @@
     },
     "data_dir": "./data",
     "disable_consensus_follower": true,
-    "network": "emulator",
+    "network": "localnet",
     "originators": [
     ],
     "port": 8080,
@@ -23,7 +23,7 @@
         "19": {
             "access_nodes": [
                 {
-                    "address": "access1-misha-rosetta-16oct.benchnet.onflow.org:80"
+                    "address": "127.0.0.1:4001"
                 }
             ],
             "root_block": 0,
