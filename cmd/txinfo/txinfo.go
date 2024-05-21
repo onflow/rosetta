@@ -17,10 +17,10 @@ import (
 )
 
 var networks = map[string]string{
-	"mainnet":  "access.mainnet.nodes.onflow.org:9000",
-	"testnet":  "access.devnet.nodes.onflow.org:9000",
-	"canary":   "access.canary.nodes.onflow.org:9000",
-	"localnet": "127.0.0.1:3569",
+	"mainnet":    "access.mainnet.nodes.onflow.org:9000",
+	"testnet":    "access.devnet.nodes.onflow.org:9000",
+	"previewnet": "access-001.previewnet1.nodes.onflow.org:9000",
+	"localnet":   "127.0.0.1:3569",
 }
 
 func formatTransaction(txn *entities.Transaction) string {
