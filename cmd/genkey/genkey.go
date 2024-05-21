@@ -9,12 +9,12 @@ import (
 )
 
 func main() {
-	priv, err := secp256k1.GeneratePrivateKey()
+	privateKey, err := secp256k1.GeneratePrivateKey()
 	if err != nil {
 		log.Fatalf("Failed to generate key: %s", err)
 	}
-	pub := priv.PubKey()
+	pub := privateKey.PubKey()
 	fmt.Printf("Public Key (Flow Format): %x\n", pub.SerializeUncompressed()[1:])
 	fmt.Printf("Public Key (Rosetta Format): %x\n", pub.SerializeCompressed())
-	fmt.Printf("Private Key: %x\n", priv.Serialize())
+	fmt.Printf("Private Key: %x\n", privateKey.Serialize())
 }
