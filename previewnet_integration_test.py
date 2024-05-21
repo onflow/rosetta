@@ -15,7 +15,7 @@ import time
 # Specifying a constant init flow.json might be easier to maintain
 previewnet_const = {
     "networks": {
-        "previewnet": "access-001.previewnet1.nodes.onflow.org:9000"
+        "previewnet": "access.previewnet.nodes.onflow.org:9000"
     },
     "accounts": {
     }

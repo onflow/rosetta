@@ -2,7 +2,7 @@
   "cache": false,
   "construction_access_nodes": [
     {
-      "address": "access-001.previewnet1.nodes.onflow.org:9000"
+      "address": "access.previewnet.nodes.onflow.org:9000"
     }
   ],
   "contracts": {
@@ -20,13 +20,13 @@
   "spork_seal_tolerance": 10000,
   "spork_synced_tolerance": 10,
   "sporks": {
-    "46": {
+    "1": {
       "access_nodes": [
         {
-          "address": "access-001.previewnet1.nodes.onflow.org:9000"
+          "address": "access.previewnet.nodes.onflow.org:9000"
         }
       ],
-      "root_block": 13764864,
+      "root_block": 13799251,
       "version": 6
     }
   }
