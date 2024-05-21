@@ -74,6 +74,9 @@ def create_flow_account():
     cmd = ("flow accounts create --sig-algo ECDSA_secp256k1 --network testnet"
            " --signer testnet_account_signer --key " + public_key)
     cmd_result = subprocess.run(cmd.split(), stdout=subprocess.PIPE)
+    if cmd_result.returncode != 0:
+        print(f"Couldn't create account. {cmd} finished with non-zero code")
+        exit(1)
 
     # Try to parse address from link like 'testnet-faucet/fund-account?address=f95cc1f27d185fe4'
     cmd_output = cmd_result.stdout.strip().decode()
@@ -113,7 +116,7 @@ def create_originator():
     }
     save_account_to_flow_json("originator", originator_config_data)
 
-    deploy_contract("originator")
+    deploy_contract("originator", originator["address"])
 
     # Add originator to testnet config file and update flow_cold_storage_proxy contract address
     with open("testnet-clone.json", "r+") as json_file:
@@ -141,13 +144,30 @@ def replace_address_in_contract(contract_path, contract_name, address):
         sys.stdout.write(line)
 
 
-def deploy_contract(account_name):
+def fund_account(account_address):
+    fund_account_cmd = f"flow accounts fund {account_address} --network testnet"
+    _ = input(f"Open a link and fund account https://testnet-faucet.onflow.org/fund-account?address={account_address}\n"
+              f"Press enter when finished...")
+
+    result = subprocess.run(fund_account_cmd.split(), stdout=subprocess.PIPE)
+    if result.returncode != 0:
+        print(f"Couldn't deploy contract to testnet. {fund_account_cmd} finished with non-zero code")
+        exit(1)
+
+
+def deploy_contract(account_name, account_address):
+    fund_account(account_address)
+
     contract_path = "./script/cadence/contracts/FlowColdStorageProxy.cdc"
     replace_address_in_contract(contract_path, "FlowToken", "0x7e60df042a9c0868")
     replace_address_in_contract(contract_path, "FungibleToken", "0x9a0766d93b6608b7")
 
-    deploy_contract_cmd = f"flow accounts add-contract {contract_path} --signed {account_name} --network testnet"
+    deploy_contract_cmd = f"flow accounts add-contract {contract_path} --signer {account_name} --network testnet"
     result = subprocess.run(deploy_contract_cmd.split(), stdout=subprocess.PIPE)
+    if result.returncode != 0:
+        print(f"Couldn't deploy contract to testnet. {deploy_contract_cmd} finished with non-zero code.\n"
+              f"Is account funded?")
+        exit(1)
     print(result.stdout.decode('utf-8'))
 
 
@@ -167,7 +187,11 @@ def setup_rosetta():
 
 def generate_keys():
     gen_key_cmd = "go run ./cmd/genkey/genkey.go"
-    result = subprocess.run(gen_key_cmd.split(" "), stdout=subprocess.PIPE)
+    result = subprocess.run(gen_key_cmd.split(), stdout=subprocess.PIPE)
+    if result.returncode != 0:
+        print(f"Couldn't parse output of {gen_key_cmd}. Process finished with non-zero code")
+        exit(1)
+
     keys = result.stdout.decode('utf-8').split("\n")
     public_flow_key = keys[0].split(" ")[-1]
     public_rosetta_key = keys[1].split(" ")[-1]
@@ -218,7 +242,10 @@ def rosetta_create_account_transaction(transaction_type, root_originator, accoun
     hex_bytes = payloads_response["payloads"][0]["hex_bytes"]
 
     sign_tx_cmd = "go run cmd/sign/sign.go " + root_originator["private_key"] + " " + hex_bytes
-    result = subprocess.run(sign_tx_cmd.split(" "), stdout=subprocess.PIPE)
+    result = subprocess.run(sign_tx_cmd.split(), stdout=subprocess.PIPE)
+    if result.returncode != 0:
+        print(f"Couldn't sign the tx. {sign_tx_cmd} finished with non-zero code")
+        exit(1)
     signed_tx = result.stdout.decode('utf-8')[:-1]
 
     unsigned_tx = payloads_response["unsigned_transaction"]
@@ -298,7 +325,10 @@ def rosetta_transfer(originator, destination, amount, i=0):
     unsigned_tx = payloads_response["unsigned_transaction"]
 
     sign_tx_cmd = "go run cmd/sign/sign.go " + private_key + " " + hex_bytes
-    result = subprocess.run(sign_tx_cmd.split(" "), stdout=subprocess.PIPE)
+    result = subprocess.run(sign_tx_cmd.split(), stdout=subprocess.PIPE)
+    if result.returncode != 0:
+        print(f"Couldn't sign the tx. {sign_tx_cmd} finished with non-zero code")
+        exit(1)
     signed_tx = result.stdout.decode('utf-8')[:-1]
 
     combine_response = combine_transaction(unsigned_tx, originator, hex_bytes, rosetta_key, signed_tx)
@@ -363,7 +393,10 @@ def rosetta_proxy_transfer(originator, destination, originator_root, amount, i=0
     unsigned_tx = payloads_response["unsigned_transaction"]
 
     sign_tx_cmd = "go run cmd/sign/sign.go " + originator_account["private_key"] + " " + hex_bytes
-    result = subprocess.run(sign_tx_cmd.split(" "), stdout=subprocess.PIPE)
+    result = subprocess.run(sign_tx_cmd.split(), stdout=subprocess.PIPE)
+    if result.returncode != 0:
+        print(f"Couldn't sign the tx. {sign_tx_cmd} finished with non-zero code")
+        exit(1)
     signed_tx = result.stdout.decode('utf-8')[:-1]
 
     combine_response = combine_transaction(unsigned_tx, originator, hex_bytes, originator_account["rosetta_key"],
@@ -382,7 +415,10 @@ def rosetta_proxy_transfer(originator, destination, originator_root, amount, i=0
     unsigned_tx = payloads_response["unsigned_transaction"]
 
     sign_tx_cmd = "go run cmd/sign/sign.go " + originator_root_account["private_key"] + " " + hex_bytes
-    result = subprocess.run(sign_tx_cmd.split(" "), stdout=subprocess.PIPE)
+    result = subprocess.run(sign_tx_cmd.split(), stdout=subprocess.PIPE)
+    if result.returncode != 0:
+        print(f"Couldn't sign the tx. {sign_tx_cmd} finished with non-zero code")
+        exit(1)
     signed_tx = result.stdout.decode('utf-8')[:-1]
 
     combine_response = combine_transaction(unsigned_tx, originator_root, hex_bytes,
