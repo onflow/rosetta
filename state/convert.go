@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/onflow/cadence"
 	jsoncdc "github.com/onflow/cadence/encoding/json"
 	_ "github.com/onflow/cadence/runtime/stdlib" // imported for side-effects only
 	"github.com/onflow/crypto"
@@ -190,15 +191,32 @@ func decodeEvent(typ string, evt *entities.Event, hash []byte, height uint64) []
 		time.Sleep(time.Second)
 		return nil
 	}
-	fields, ok := val.ToGoValue().([]interface{})
+
+	array, ok := val.(cadence.Array)
 	if !ok {
 		log.Errorf(
-			"Failed to convert %s event payload in transaction %x in block %x at height %d to Go slice",
+			"Failed to convert %s event payload in transaction %x in block %x at height %d to cadence.Array",
 			typ, evt.TransactionId, hash, height,
 		)
 		time.Sleep(time.Second)
 		return nil
 	}
+
+	fields := []interface{}{}
+	for _, el := range array.Values {
+		field, ok := el.(interface{})
+
+		if !ok {
+			log.Errorf(
+				"Failed to convert %s event payload in transaction %x in block %x at height %d to interface",
+				typ, evt.TransactionId, hash, height,
+			)
+			time.Sleep(time.Second)
+			return nil
+		}
+		fields = append(fields, field)
+	}
+
 	return fields
 }
 

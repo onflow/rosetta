@@ -132,7 +132,7 @@ func (s *Server) accountPublicKeys(ctx context.Context, params map[string]interf
 		if err != nil {
 			return nil, handleExecutionErr(err, "execute get_proxy_public_key")
 		}
-		rawKey, ok := resp.ToGoValue().(string)
+		rawKey, ok := resp.(cadence.String)
 		if !ok {
 			return nil, wrapErrorf(
 				errInternal, "failed to convert get_proxy_public_key result to string",
@@ -146,7 +146,7 @@ func (s *Server) accountPublicKeys(ctx context.Context, params map[string]interf
 					len(keys),
 				)
 			}
-			pub, err := hex.DecodeString(rawKey)
+			pub, err := hex.DecodeString(rawKey.String())
 			if err != nil {
 				return nil, wrapErrorf(
 					errInternal,
@@ -246,14 +246,28 @@ func (s *Server) getOnchainData(ctx context.Context, addr []byte, block []byte) 
 	if err != nil {
 		return nil, handleExecutionErr(err, "execute "+scriptName)
 	}
-	fields, ok := resp.ToGoValue().([]interface{})
+	array, ok := resp.(cadence.Array)
 	if !ok {
 		return nil, wrapErrorf(
 			errInternal,
-			"failed to convert %s result to Go slice",
+			"failed to convert %s result to cadence.Array",
 			scriptName,
 		)
 	}
+	fields := []interface{}{}
+
+	for _, el := range array.Values {
+		field, ok := el.(interface{})
+		if !ok {
+			return nil, wrapErrorf(
+				errInternal,
+				"failed to convert %s result to interface{}",
+				scriptName,
+			)
+		}
+		fields = append(fields, field)
+	}
+
 	if len(fields) != 3 {
 		return nil, wrapErrorf(
 			errInternal,
