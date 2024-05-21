@@ -20,7 +20,7 @@
     "port": 8080,
     "spork_seal_tolerance": 600,
     "sporks": {
-        "48": {
+        "50": {
             "access_nodes": [
                 {
                     "address": "access.testnet.nodes.onflow.org:9000"
