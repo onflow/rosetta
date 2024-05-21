@@ -10,15 +10,6 @@ import csv
 import requests
 import time
 
-
-######################################################################################
-# Constants
-######################################################################################
-
-# Changing fcl versions seemed to have yielded varying flow.json outputs / default naming
-# Specifying a constant init flow.json might be easier to maintain
-network_flag = ['-n', 'testnet']
-config_file_name = "testnet-clone.json"
 rosetta_host_url = "http://127.0.0.1:8080"
 
 ######################################################################################
@@ -33,16 +24,9 @@ def init_flow_json():
         print("\nCouldn't init directory with `flow` CLI. Is it installed?")
         exit(1)
 
-    # Add testnet_account_signer to `accounts` section in flow.json
-    with open('flow.json', 'r+') as file:
-        config = json.load(file)
-        accounts = config["accounts"]
-        accounts["testnet_account_signer"] = read_account_signer("testnet_account_signer.json")
-        config["accounts"] = accounts
-
-        # rewrite flow.json
-        file.seek(0)
-        file.write(json.dumps(config, indent=4))
+    # We use signer account to create other accounts and sign transactions
+    signer_account = read_account_signer("testnet_account_signer.json")
+    save_account_to_flow_json("testnet_account_signer", signer_account)
 
 
 # Reads the credentials of the account that is used to sign other accounts'
@@ -65,15 +49,34 @@ def read_account_signer(file_name):
     return account_signer
 
 
+def save_account(account_name, account_data):
+    with open('accounts.json', 'r+') as account_file:
+        accounts = json.load(account_file)
+        accounts[account_name] = account_data
+
+        data = json.dumps(accounts, indent=4)
+        account_file.seek(0)
+        account_file.write(data)
+
+
+def save_account_to_flow_json(account_name, account_data):
+    with open('flow.json', "r+") as file:
+        accounts = json.load(file)
+        accounts["accounts"][account_name] = account_data
+
+        data = json.dumps(accounts, indent=4)
+        file.seek(0)
+        file.write(data)
+
+
 def create_flow_account():
     public_key, rosetta_key, private_key = generate_keys()
     cmd = ("flow accounts create --sig-algo ECDSA_secp256k1 --network testnet"
            " --signer testnet_account_signer --key " + public_key)
     cmd_result = subprocess.run(cmd.split(), stdout=subprocess.PIPE)
 
-    # parse address
-    cmd_output = cmd_result.stdout.strip().decode()
     # Try to parse address from link like 'testnet-faucet/fund-account?address=f95cc1f27d185fe4'
+    cmd_output = cmd_result.stdout.strip().decode()
     regex = "(address=)([0-9a-z]+)"
     address_regex_group = re.search(regex, cmd_output)
     address = address_regex_group[2]
@@ -89,13 +92,16 @@ def create_flow_account():
 def create_originator():
     originator = create_flow_account()
 
-    with open('account-keys.json', "w") as keys_file:
-        originator_account = dict()
-        originator_account["originator"] = originator
-        data = json.dumps(originator_account, indent=4)
-        keys_file.write(data)
+    # Save originator to accounts.json
+    with open('accounts.json', 'w+') as account_file:
+        accounts = dict()
+        accounts["originator"] = originator
+        data = json.dumps(accounts, indent=4)
+        account_file.seek(0)
+        account_file.write(data)
 
-    contract_account_value = {
+    # Save originator to flow.json
+    originator_config_data = {
         "address": originator["address"],
         "key": {
             "type": "hex",
@@ -105,19 +111,12 @@ def create_originator():
             "privateKey": originator["private_key"]
         }
     }
+    save_account_to_flow_json("originator", originator_config_data)
 
-    # add originator account to flow.json
-    with open('flow.json', "r+") as json_file:
-        data = json.load(json_file)
-        data["accounts"]["originator"] = contract_account_value
-        json_file.seek(0)
-        json.dump(data, json_file, indent=4)
-        json_file.truncate()
+    deploy_contract("originator")
 
-    deploy_contracts("originator")
-
-    # add flow_cold_storage_proxy contract to originator account in flow.json
-    with open(config_file_name, "r+") as json_file:
+    # Add originator to testnet config file and update flow_cold_storage_proxy contract address
+    with open("testnet-clone.json", "r+") as json_file:
         data = json.load(json_file)
         data["originators"] = [originator["address"]]
         data["contracts"]["flow_cold_storage_proxy"] = originator["address"]
@@ -128,12 +127,7 @@ def create_originator():
 
 def create_proxy_account():
     proxy_account = create_flow_account()
-    with open('account-keys.json', "r+") as keys_file:
-        account_keys = json.load(keys_file)
-        account_keys["proxy_account"] = proxy_account
-        data = json.dumps(account_keys, indent=4)
-        keys_file.seek(0)
-        keys_file.write(data)
+    save_account("proxy_account", proxy_account)
 
 
 # Modifies address of contract in import statement in cadence contract
@@ -147,7 +141,7 @@ def replace_address_in_contract(contract_path, contract_name, address):
         sys.stdout.write(line)
 
 
-def deploy_contracts(account_name):
+def deploy_contract(account_name):
     contract_path = "./script/cadence/contracts/FlowColdStorageProxy.cdc"
     replace_address_in_contract(contract_path, "FlowToken", "0x7e60df042a9c0868")
     replace_address_in_contract(contract_path, "FungibleToken", "0x9a0766d93b6608b7")
@@ -163,7 +157,7 @@ def setup_rosetta():
         print("Couldn't build rosetta. `make` command failed")
         exit(1)
 
-    _ = input(f"Please start rosetta by running ./server {config_file_name} in different terminal.\n"
+    _ = input(f"Please start rosetta by running ./server testnet-clone.json in different terminal.\n"
               f"Press enter in this terminal when you've finished")
 
 
@@ -182,7 +176,7 @@ def generate_keys():
 
 
 def read_account(account_name):
-    with open("account-keys.json") as keys_file_json:
+    with open("accounts.json") as keys_file_json:
         accounts = json.load(keys_file_json)
         return accounts[account_name]
 
@@ -201,67 +195,6 @@ def request_router(target_url, body):
 ######################################################################################
 # Rosetta Construction Functions
 ######################################################################################
-
-def rosetta_create_account(root_originator, root_originator_name="originator", i=0):
-    public_flow_key, public_rosetta_key, new_private_key = generate_keys()
-    transaction = "create_account"
-    metadata = {"public_key": public_rosetta_key}
-    operations = [
-        {
-            "type": transaction,
-            "operation_identifier": {
-                "index": i
-            },
-            "metadata": metadata
-        }
-    ]
-    preprocess_response = preprocess_transaction(root_originator, operations)
-    metadata_response = metadata_transaction(preprocess_response["options"])
-    payloads_response = payloads_transaction(operations, metadata_response["metadata"]["protobuf"])
-    originator_root_account = read_account(root_originator_name)
-    hex_bytes = payloads_response["payloads"][0]["hex_bytes"]
-    unsigned_tx = payloads_response["unsigned_transaction"]
-    sign_tx_cmd = "go run cmd/sign/sign.go " + originator_root_account["private_key"] + " hex_bytes"
-    result = subprocess.run(sign_tx_cmd.split(" "), stdout=subprocess.PIPE)
-    signed_tx = result.stdout.decode('utf-8')[:-1]
-    combine_response = combine_transaction(unsigned_tx, root_originator, hex_bytes, originator_root_account["rosetta_key"], signed_tx)
-    submit_transaction_response = submit_transaction(combine_response["signed_transaction"])
-    tx_hash = submit_transaction_response["transaction_identifier"]["hash"]
-    print("Look for the account that has Received 0.00100000 Flow")
-    flow_address = input("What is the flow address generated? (https://testnet.flowscan.org/transaction/" + tx_hash + ")\n")
-    with open('account-keys.csv', "a+") as file_object:
-        file_object.write("create_account," + public_flow_key + "," + public_rosetta_key + "," + new_private_key + "," + flow_address + "\n")
-
-
-def rosetta_create_proxy_account(root_originator, root_originator_name="originator", i=0):
-    public_flow_key, public_rosetta_key, new_private_key = generate_keys()
-    transaction = "create_proxy_account"
-    metadata = {"public_key": public_rosetta_key}
-    operations = [
-        {
-            "type": transaction,
-            "operation_identifier": {
-                "index": i
-            },
-            "metadata": metadata
-        }
-    ]
-    preprocess_response = preprocess_transaction(root_originator, operations)
-    metadata_response = metadata_transaction(preprocess_response["options"])
-    payloads_response = payloads_transaction(operations, metadata_response["metadata"]["protobuf"])
-    proxy_account = read_account(root_originator_name)
-    hex_bytes = payloads_response["payloads"][0]["hex_bytes"]
-    unsigned_tx = payloads_response["unsigned_transaction"]
-    sign_tx_cmd = "go run cmd/sign/sign.go " + proxy_account["private_key"] + " " + hex_bytes
-    result = subprocess.run(sign_tx_cmd.split(" "), stdout=subprocess.PIPE)
-    signed_tx = result.stdout.decode('utf-8')[:-1]
-    combine_response = combine_transaction(unsigned_tx, root_originator, hex_bytes, proxy_account["rosetta_key"], signed_tx)
-    submit_transaction_response = submit_transaction(combine_response["signed_transaction"])
-    tx_hash = submit_transaction_response["transaction_identifier"]["hash"]
-    print("Look for the account that has Received 0.00100000 Flow")
-    flow_address = input("What is the flow address generated? (https://testnet.flowscan.org/transaction/" + tx_hash + ")\n")
-    with open('account-keys.csv', "a+") as file_object:
-        file_object.write("create_proxy_account," + public_flow_key + "," + public_rosetta_key + "," + new_private_key + "," + flow_address + "\n")
 
 
 def rosetta_create_account_transaction(transaction_type, root_originator, account_name, operation_id):
@@ -308,14 +241,7 @@ def rosetta_create_account_transaction(transaction_type, root_originator, accoun
         "private_key": flow_private_key,
         "rosetta_key": public_rosetta_key
     }
-
-    with open('account-keys.json', "r+") as keys_file:
-        keys = json.load(keys_file)
-        keys[account_name] = created_account[account_name]
-
-        data = json.dumps(keys, indent=4)
-        keys_file.seek(0)
-        keys_file.write(data)
+    save_account(account_name, created_account[account_name])
 
     return created_account
 
@@ -324,41 +250,41 @@ def rosetta_transfer(originator, destination, amount, i=0):
     transaction = "transfer"
     operations = [
         {
-        "type": transaction,
-        "operation_identifier": {
-            "index": i
-        },
-        "account": {
-            "address": originator
-        },
-        "amount": {
-            "currency": {
-            "decimals": 8,
-            "symbol": "FLOW"
+            "type": transaction,
+            "operation_identifier": {
+                "index": i
             },
-            "value": str(-1 * amount * 10 ** 7)
-        }
+            "account": {
+                "address": originator
+            },
+            "amount": {
+                "currency": {
+                    "decimals": 8,
+                    "symbol": "FLOW"
+                },
+                "value": str(-1 * amount * 10 ** 7)
+            }
         },
         {
-        "type": transaction,
-        "operation_identifier": {
-            "index": i + 1
-        },
-        "related_operations": [
-            {
-            "index": i
-            }
-        ],
-        "account": {
-            "address": destination
-        },
-        "amount": {
-            "currency": {
-            "decimals": 8,
-            "symbol": "FLOW"
+            "type": transaction,
+            "operation_identifier": {
+                "index": i + 1
             },
-            "value": str(amount * 10 ** 7)
-        }
+            "related_operations": [
+                {
+                    "index": i
+                }
+            ],
+            "account": {
+                "address": destination
+            },
+            "amount": {
+                "currency": {
+                    "decimals": 8,
+                    "symbol": "FLOW"
+                },
+                "value": str(amount * 10 ** 7)
+            }
         }
     ]
 
@@ -388,41 +314,41 @@ def rosetta_proxy_transfer(originator, destination, originator_root, amount, i=0
     transaction = "proxy_transfer_inner"
     operations = [
         {
-        "type": transaction,
-        "operation_identifier": {
-            "index": i
-        },
-        "account": {
-            "address": originator
-        },
-        "amount": {
-            "currency": {
-            "decimals": 8,
-            "symbol": "FLOW"
+            "type": transaction,
+            "operation_identifier": {
+                "index": i
             },
-            "value": str(-1 * amount * 10 ** 7)
-        }
+            "account": {
+                "address": originator
+            },
+            "amount": {
+                "currency": {
+                    "decimals": 8,
+                    "symbol": "FLOW"
+                },
+                "value": str(-1 * amount * 10 ** 7)
+            }
         },
         {
-        "type": transaction,
-        "operation_identifier": {
-            "index": i + 1
-        },
-        "related_operations": [
-            {
-            "index": i
-            }
-        ],
-        "account": {
-            "address": destination
-        },
-        "amount": {
-            "currency": {
-            "decimals": 8,
-            "symbol": "FLOW"
+            "type": transaction,
+            "operation_identifier": {
+                "index": i + 1
             },
-            "value": str(amount * 10 ** 7)
-        }
+            "related_operations": [
+                {
+                    "index": i
+                }
+            ],
+            "account": {
+                "address": destination
+            },
+            "amount": {
+                "currency": {
+                    "decimals": 8,
+                    "symbol": "FLOW"
+                },
+                "value": str(amount * 10 ** 7)
+            }
         }
     ]
 
@@ -440,11 +366,13 @@ def rosetta_proxy_transfer(originator, destination, originator_root, amount, i=0
     result = subprocess.run(sign_tx_cmd.split(" "), stdout=subprocess.PIPE)
     signed_tx = result.stdout.decode('utf-8')[:-1]
 
-    combine_response = combine_transaction(unsigned_tx, originator, hex_bytes, originator_account["rosetta_key"], signed_tx)
+    combine_response = combine_transaction(unsigned_tx, originator, hex_bytes, originator_account["rosetta_key"],
+                                           signed_tx)
     combined_signed_tx = combine_response["signed_transaction"]
 
     # transaction from originator root
-    preprocess_response = preprocess_transaction(originator_root, operations, {"proxy_transfer_payload": combined_signed_tx})
+    preprocess_response = preprocess_transaction(originator_root, operations,
+                                                 {"proxy_transfer_payload": combined_signed_tx})
     metadata_response = metadata_transaction(preprocess_response["options"])
     payloads_response = payloads_transaction(operations, metadata_response["metadata"]["protobuf"])
 
@@ -457,7 +385,8 @@ def rosetta_proxy_transfer(originator, destination, originator_root, amount, i=0
     result = subprocess.run(sign_tx_cmd.split(" "), stdout=subprocess.PIPE)
     signed_tx = result.stdout.decode('utf-8')[:-1]
 
-    combine_response = combine_transaction(unsigned_tx, originator_root, hex_bytes, originator_root_account["rosetta_key"], signed_tx)
+    combine_response = combine_transaction(unsigned_tx, originator_root, hex_bytes,
+                                           originator_root_account["rosetta_key"], signed_tx)
 
     submit_transaction_response = submit_transaction(combine_response["signed_transaction"])
     tx_hash = submit_transaction_response["transaction_identifier"]["hash"]
@@ -525,20 +454,20 @@ def combine_transaction(unsigned_tx, root_originator, hex_bytes, rosetta_key, si
         "unsigned_transaction": unsigned_tx,
         "signatures": [
             {
-            "signing_payload": {
-                "account_identifier": {
-                "address": root_originator
+                "signing_payload": {
+                    "account_identifier": {
+                        "address": root_originator
+                    },
+                    "address": root_originator,
+                    "hex_bytes": hex_bytes,
+                    "signature_type": "ecdsa"
                 },
-                "address": root_originator,
-                "hex_bytes": hex_bytes,
-                "signature_type": "ecdsa"
-            },
-            "public_key": {
-                "hex_bytes": rosetta_key,
-                "curve_type": "secp256k1"
-            },
-            "signature_type": "ecdsa",
-            "hex_bytes": signed_tx
+                "public_key": {
+                    "hex_bytes": rosetta_key,
+                    "curve_type": "secp256k1"
+                },
+                "signature_type": "ecdsa",
+                "hex_bytes": signed_tx
             }
         ]
     }
