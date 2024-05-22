@@ -19,7 +19,7 @@ localnet_const = {
 		"localnet-service-account": {
 			"address": "f8d6e0586b0a20c7",
 			"key":{
-				"type": "hex",
+                "type": "hex",
                 "index": 0,
                 "signatureAlgorithm": "ECDSA_P256",
                 "hashAlgorithm": "SHA2_256",

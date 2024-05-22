@@ -12,6 +12,7 @@ deps:
 
 lint:
 	@go mod tidy
+	@staticcheck ./...
 
 proto:
 	@echo ">> Generating model/model.pb.go"
