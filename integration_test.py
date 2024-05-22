@@ -13,12 +13,12 @@ import requests
 # Specifying a constant init flow.json might be easier to maintain
 localnet_const = {
 	"networks": {
-		"localnet": "127.0.0.1:4001"
+        "localnet": "127.0.0.1:4001"
 	},
-	"accounts": {
-		"localnet-service-account": {
-			"address": "f8d6e0586b0a20c7",
-			"key":{
+    "accounts": {
+        "localnet-service-account": {
+            "address": "f8d6e0586b0a20c7",
+            "key":{
                 "type": "hex",
                 "index": 0,
                 "signatureAlgorithm": "ECDSA_P256",
