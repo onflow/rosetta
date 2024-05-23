@@ -5,7 +5,11 @@
 /cli-conf/data-testnet/
 /cli-conf/result-mainnet.json
 /cli-conf/result-testnet.json
-/data/
 /.idea
 /server
 /script/node_modules/
+
+integration/flow.json
+integration/accounts.json
+integration/emulator-account.pkey
+integration/__pycache__/

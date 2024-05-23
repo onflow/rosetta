@@ -19,10 +19,15 @@ proto:
 	    --go_opt=paths=source_relative model/model.proto
 
 integration-test-cleanup:
-	rm -f flow.json
-	rm -f account-keys.csv
-	rm -rf data
-	rm -rf flow-go
+	rm -f integration/flow.json
+	rm -f integration/emulator-account.pkey
+	rm -f integration/accounts.json
+	rm -rf data/
+	rm -rf flow-go/
 
 integration-test:
 	python3 integration_test.py
+
+
+.PHONY clean:
+	rm -f ./server
