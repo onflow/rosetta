@@ -71,8 +71,8 @@ def save_account_to_flow_json(account_name, account_data):
 
 def create_flow_account():
     public_key, rosetta_key, private_key = generate_keys()
-    cmd = ("flow accounts create --sig-algo ECDSA_secp256k1 --network testnet"
-           " --signer testnet_account_signer --key " + public_key)
+    cmd = "flow accounts create --sig-algo ECDSA_secp256k1 --network testnet" \
+          f" --signer testnet_account_signer --key {public_key}"
     cmd_result = subprocess.run(cmd.split(), stdout=subprocess.PIPE)
     if cmd_result.returncode != 0:
         print(f"Couldn't create account. {cmd} finished with non-zero code")
@@ -178,7 +178,7 @@ def setup_rosetta():
         exit(1)
 
     _ = input(f"Please start rosetta by running ./server testnet-clone.json in different terminal.\n"
-              f"Press enter in this terminal when you've finished")
+              f"Press enter in this terminal when you've finished...")
 
 
 ######################################################################################
@@ -216,6 +216,13 @@ def request_router(target_url, body):
     return r.json()
 
 
+def add_hex_prefix(address):
+    return "0x" + address
+
+
+def convert_to_rosetta_address(address):
+    return add_hex_prefix(address)
+
 ######################################################################################
 # Rosetta Construction Functions
 ######################################################################################
@@ -236,9 +243,18 @@ def rosetta_create_account_transaction(transaction_type, root_originator, accoun
         }
     ]
 
-    preprocess_response = preprocess_transaction(root_originator["address"], operations)
+    preprocess_response = preprocess_transaction(convert_to_rosetta_address(root_originator["address"]), operations)
+    if "options" not in preprocess_response:
+        print(f"Preprocess transaction returned unexpected response")
+        exit(1)
     metadata_response = metadata_transaction(preprocess_response["options"])
+    if "metadata" not in metadata_response:
+        print(f"Metadata transaction finished returned unexpected response")
+        exit(1)
     payloads_response = payloads_transaction(operations, metadata_response["metadata"]["protobuf"])
+    if "payloads" not in payloads_response:
+        print(f"Payloads transaction returned unexpected response")
+        exit(1)
     hex_bytes = payloads_response["payloads"][0]["hex_bytes"]
 
     sign_tx_cmd = "go run cmd/sign/sign.go " + root_originator["private_key"] + " " + hex_bytes
@@ -251,15 +267,16 @@ def rosetta_create_account_transaction(transaction_type, root_originator, accoun
     unsigned_tx = payloads_response["unsigned_transaction"]
 
     combine_tx_response = combine_transaction(unsigned_tx,
-                                              root_originator["address"],
+                                              convert_to_rosetta_address(root_originator["address"]),
                                               hex_bytes,
                                               root_originator["rosetta_key"],
                                               signed_tx)
 
     submit_transaction_response = submit_transaction(combine_tx_response["signed_transaction"])
     tx_hash = submit_transaction_response["transaction_identifier"]["hash"]
-    print("Look for the account that has Received 0.00100000 Flow")
-    generated_address = input(f"Enter generated flow address at https://testnet.flowscan.org/transaction/{tx_hash} : ")
+    print("Look for the account that has Received 0.00100000 Flow.")
+    generated_address = input(f"Enter generated flow address at https://testnet.flowdiver.io/tx/{tx_hash}\n"
+                              "(wait for a second if tx is not processed yet): ")
 
     created_account = dict()
     created_account[account_name] = {
