@@ -2,20 +2,16 @@
 
 all: build
 
-relic:
-	./environ/build-relic.py
-
 go-build:
-	go build -tags relic -o server cmd/server/server.go
+	go build -o server cmd/server/server.go
 
-build: relic go-build
+build: go-build
 
 deps:
 	go mod download -x
 
 lint:
 	@go mod tidy
-	@staticcheck -tags relic ./...
 
 proto:
 	@echo ">> Generating model/model.pb.go"
@@ -23,10 +19,15 @@ proto:
 	    --go_opt=paths=source_relative model/model.proto
 
 integration-test-cleanup:
-	rm -f flow.json
-	rm -f account-keys.csv
-	rm -rf data
-	rm -rf flow-go
+	rm -f integration/flow.json
+	rm -f integration/emulator-account.pkey
+	rm -f integration/accounts.json
+	rm -rf data/
+	rm -rf flow-go/
 
 integration-test:
 	python3 integration_test.py
+
+
+.PHONY clean:
+	rm -f ./server

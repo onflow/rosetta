@@ -9,8 +9,8 @@ import (
 
 	jsoncdc "github.com/onflow/cadence/encoding/json"
 	_ "github.com/onflow/cadence/runtime/stdlib" // imported for side-effects only
-	"github.com/onflow/flow-go/crypto"
-	"github.com/onflow/flow-go/crypto/hash"
+	"github.com/onflow/crypto"
+	"github.com/onflow/crypto/hash"
 	"github.com/onflow/flow-go/model/fingerprint"
 	"github.com/onflow/flow-go/model/flow"
 	"github.com/onflow/flow-go/storage/merkle"

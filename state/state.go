@@ -16,9 +16,9 @@ import (
 	"time"
 
 	"github.com/dgraph-io/badger/v2"
+	flowcrypto "github.com/onflow/crypto"
 	"github.com/onflow/flow-go/cmd/bootstrap/utils"
 	hotstuff "github.com/onflow/flow-go/consensus/hotstuff/model"
-	flowcrypto "github.com/onflow/flow-go/crypto"
 	"github.com/onflow/flow-go/follower"
 	"github.com/onflow/flow-go/model/flow"
 	"github.com/onflow/flow-go/module/chainsync"
