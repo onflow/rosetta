@@ -95,14 +95,6 @@ def create_flow_account():
 def create_originator():
     originator = create_flow_account()
 
-    # Save originator to accounts.json
-    with open('accounts.json', 'w+') as account_file:
-        accounts = dict()
-        accounts["originator"] = originator
-        data = json.dumps(accounts, indent=4)
-        account_file.seek(0)
-        account_file.write(data)
-
     # Save originator to flow.json
     originator_config_data = {
         "address": originator["address"],
@@ -127,9 +119,19 @@ def create_originator():
         json.dump(data, json_file, indent=4)
         json_file.truncate()
 
+    # Functions related to rosetta are looking for accounts in accounts.json
+    originator["address"] = convert_to_rosetta_address(originator["address"])
+    with open('accounts.json', 'w+') as account_file:
+        accounts = dict()
+        accounts["originator"] = originator
+        data = json.dumps(accounts, indent=4)
+        account_file.seek(0)
+        account_file.write(data)
+
 
 def create_proxy_account():
     proxy_account = create_flow_account()
+    proxy_account["address"] = convert_to_rosetta_address(proxy_account["address"])
     save_account("proxy_account", proxy_account)
 
 
@@ -243,7 +245,7 @@ def rosetta_create_account_transaction(transaction_type, root_originator, accoun
         }
     ]
 
-    preprocess_response = preprocess_transaction(convert_to_rosetta_address(root_originator["address"]), operations)
+    preprocess_response = preprocess_transaction(root_originator["address"], operations)
     if "options" not in preprocess_response:
         print(f"Preprocess transaction returned unexpected response")
         exit(1)
@@ -267,7 +269,7 @@ def rosetta_create_account_transaction(transaction_type, root_originator, accoun
     unsigned_tx = payloads_response["unsigned_transaction"]
 
     combine_tx_response = combine_transaction(unsigned_tx,
-                                              convert_to_rosetta_address(root_originator["address"]),
+                                              root_originator["address"],
                                               hex_bytes,
                                               root_originator["rosetta_key"],
                                               signed_tx)
