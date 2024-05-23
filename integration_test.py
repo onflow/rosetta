@@ -45,12 +45,9 @@ def clone_flowgo_cmd():
         if "/onflow/flow-go " in line:
             split = line.split(" ")
             repo = split[0][1:]
-            full_version = split[1][:-1]
+            version = split[1][:-1]
             # Split the branch name to get the tag part
-            #tag = full_version.split('-')[0] //TODO: update to discussed, tag v0.33.2 was removed
-            tag ="v0.33.9"
-            print(tag)
-            cmd = "git clone -b " + tag + " --single-branch https://" + repo + ".git"
+            cmd = "git clone -b " + version + " --single-branch https://" + repo + ".git"
     print(cmd)
     if cmd:
         subprocess.run(cmd.split(" "), stdout=subprocess.PIPE)
@@ -71,7 +68,6 @@ def init_localnet():
     start_localnet_cmd = "make start -C ./flow-go/integration/localnet"
     subprocess.run(start_localnet_cmd.split(" "), stdout=subprocess.PIPE)
 
-
 def init_flow_json():
     with open('flow.json', 'w') as json_file:
         json.dump(localnet_const, json_file, indent=4)
@@ -85,12 +81,10 @@ def gen_contract_account(account_name):
     create_account_cmd = "flow accounts create --sig-algo ECDSA_secp256k1 --key " + public_flow_key
 
     # store the list of arguments in a variable
-    #args = create_account_cmd.split(" ") + benchnet2_flags + service_account_flags
     args = create_account_cmd.split(" ") + localnet_flags + service_account_flags
     print(f"create account command: {args}")
     results = subprocess.run(args, stdout=subprocess.PIPE)
-
-    #results = subprocess.run(create_account_cmd.split(" ") + localnet_flags + service_account_flags, stdout=subprocess.PIPE)
+    print("\nresults=", results.stdout.decode("utf-8"))
 
     # Loop through the lines of the output and looks for a line that contains the word “Address”.
     # This line should contain the address of the newly created account.
@@ -469,14 +463,14 @@ def submit_transaction(signed_tx):
 
 
 def main():
-    clone_flowgo_cmd()
-    build_flow()
-    init_localnet()
+    # clone_flowgo_cmd()
+    # build_flow()
+    # init_localnet()
     init_flow_json()
     for i in range(1,number_of_contract_accounts+1):
-         account_str = "root-originator-account-" + str(i)
-         gen_contract_account(account_str)
-         deploy_contracts(account_str)
+        account_str = "root-originator-account-" + str(i)
+        gen_contract_account(account_str)
+        deploy_contracts(account_str)
     setup_rosetta()
     seed_contract_accounts()
 

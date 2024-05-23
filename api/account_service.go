@@ -161,7 +161,7 @@ func (s *Server) getSequenceNumber(ctx context.Context, addr []byte, block *mode
 		if err != nil {
 			return 0, err
 		}
-		nonce, ok := resp.ToGoValue().(int64)
+		nonce, ok := resp.(cadence.Int64)
 		if !ok {
 			return 0, fmt.Errorf("failed to convert get_proxy_nonce result to int64")
 		}

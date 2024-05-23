@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/onflow/cadence"
 	jsoncdc "github.com/onflow/cadence/encoding/json"
 	_ "github.com/onflow/cadence/runtime/stdlib" // imported for side-effects only
 	"github.com/onflow/crypto"
@@ -180,7 +181,7 @@ func convertExecutionResult(hash []byte, height uint64, result *entities.Executi
 	return exec, true
 }
 
-func decodeEvent(typ string, evt *entities.Event, hash []byte, height uint64) []interface{} {
+func decodeEvent(typ string, evt *entities.Event, hash []byte, height uint64) (cadence.Event, error) {
 	val, err := jsoncdc.Decode(access.NoopMemoryGauge, evt.Payload)
 	if err != nil {
 		log.Errorf(
@@ -188,18 +189,19 @@ func decodeEvent(typ string, evt *entities.Event, hash []byte, height uint64) []
 			typ, evt.TransactionId, hash, height, err,
 		)
 		time.Sleep(time.Second)
-		return nil
+		return cadence.Event{}, err
 	}
-	fields, ok := val.ToGoValue().([]interface{})
+	event, ok := val.(cadence.Event)
 	if !ok {
 		log.Errorf(
-			"Failed to convert %s event payload in transaction %x in block %x at height %d to Go slice",
+			"Failed to convert %s event payload in transaction %x in block %x at height %d to event",
 			typ, evt.TransactionId, hash, height,
 		)
 		time.Sleep(time.Second)
-		return nil
+		return cadence.Event{}, err
 	}
-	return fields
+
+	return event, nil
 }
 
 func deriveBlockHash(spork *config.Spork, hdr flowHeader) flow.Identifier {

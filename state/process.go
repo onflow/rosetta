@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/onflow/cadence"
+	"github.com/onflow/cadence/runtime/stdlib"
 	"github.com/onflow/flow-go/model/flow"
 	flowaccess "github.com/onflow/flow/protobuf/go/flow/access"
 	"github.com/onflow/flow/protobuf/go/flow/entities"
@@ -430,11 +432,12 @@ outer:
 				for _, evt := range txnResult.Events {
 					switch evt.Type {
 					case "flow.AccountCreated":
-						fields := decodeEvent("flow.AccountCreated", evt, hash, height)
-						if fields == nil {
+						event, err := decodeEvent("flow.AccountCreated", evt, hash, height)
+						if err != nil {
 							skipCache = true
 							continue outer
 						}
+						fields := event.GetFields()
 						if len(fields) != 1 {
 							log.Errorf(
 								"Found flow.AccountCreated event with %d fields in transaction %x in block %x at height %d",
@@ -443,7 +446,11 @@ outer:
 							skipCache = true
 							continue outer
 						}
-						addr, ok := fields[0].([8]byte)
+						// 'address' field
+						addr, ok := cadence.SearchFieldByName(
+							event,
+							stdlib.AccountEventAddressParameter.Identifier,
+						).(cadence.Address)
 						if !ok {
 							log.Errorf(
 								"Unable to load address from flow.AccountCreated event in transaction %x in block %x at height %d",
@@ -466,11 +473,12 @@ outer:
 						// NOTE(tav): Since FlowColdStorageProxy.Created events
 						// are emitted after flow.AccountCreated, we can process
 						// it within the same loop.
-						fields := decodeEvent("FlowColdStorageProxy.Created", evt, hash, height)
-						if fields == nil {
+						event, err := decodeEvent("FlowColdStorageProxy.Created", evt, hash, height)
+						if err != nil {
 							skipCache = true
 							continue outer
 						}
+						fields := event.GetFields()
 						// NOTE(tav): We only care about new proxy accounts if
 						// they are created by one of our tracked accounts.
 						if !i.isTracked(payer, newAccounts) {
@@ -492,7 +500,11 @@ outer:
 							skipCache = true
 							continue outer
 						}
-						addr, ok := fields[0].([8]byte)
+						// account field
+						addr, ok := cadence.SearchFieldByName(
+							event,
+							"account",
+						).(cadence.Address)
 						if !ok {
 							log.Errorf(
 								"Unable to load address from FlowColdStorageProxy.Created event in transaction %x in block %x at height %d",
@@ -510,7 +522,12 @@ outer:
 							skipCache = true
 							continue outer
 						}
-						publicKey, ok := fields[1].(string)
+
+						// publicKey field
+						publicKey, ok := cadence.SearchFieldByName(
+							event,
+							stdlib.AccountEventPublicKeyIndexParameter.Identifier,
+						).(cadence.String)
 						if !ok {
 							log.Errorf(
 								"Unable to load public key from FlowColdStorageProxy.Created event in transaction %x in block %x at height %d",
@@ -519,7 +536,7 @@ outer:
 							skipCache = true
 							continue outer
 						}
-						uncompressed, err := hex.DecodeString(publicKey)
+						uncompressed, err := hex.DecodeString(string(publicKey))
 						if err != nil {
 							log.Errorf(
 								"Unable to hex decode public key from FlowColdStorageProxy.Created event in transaction %x in block %x at height %d: %s",
@@ -545,11 +562,12 @@ outer:
 						// account's vault once we've found the account address.
 						// Therefore, we can process these events in the same
 						// loop.
-						fields := decodeEvent("FlowColdStorageProxy.Deposited", evt, hash, height)
-						if fields == nil {
+						event, err := decodeEvent("FlowColdStorageProxy.Deposited", evt, hash, height)
+						if err != nil {
 							skipCache = true
 							continue outer
 						}
+						fields := event.GetFields()
 						if len(fields) != 2 {
 							log.Errorf(
 								"Found FlowColdStorageProxy.Deposited event with %d fields in transaction %x in block %x at height %d",
@@ -558,7 +576,11 @@ outer:
 							skipCache = true
 							continue outer
 						}
-						addr, ok := fields[0].([8]byte)
+						// account field
+						addr, ok := cadence.SearchFieldByName(
+							event,
+							"account",
+						).(cadence.Address)
 						if !ok {
 							log.Errorf(
 								"Unable to load the `account` address from FlowColdStorageProxy.Deposited event in transaction %x in block %x at height %d",
@@ -567,7 +589,11 @@ outer:
 							skipCache = true
 							continue outer
 						}
-						amount, ok := fields[1].(uint64)
+						// amount field
+						amountValue, ok := cadence.SearchFieldByName(
+							event,
+							"amount",
+						).(cadence.UInt64)
 						if !ok {
 							log.Errorf(
 								"Unable to load the `amount` from FlowColdStorageProxy.Deposited event in transaction %x in block %x at height %d",
@@ -576,6 +602,8 @@ outer:
 							skipCache = true
 							continue outer
 						}
+						amount := uint64(amountValue)
+
 						txn.Events = append(txn.Events, &model.TransferEvent{
 							Amount:   amount,
 							Receiver: addr[:],
@@ -591,11 +619,12 @@ outer:
 						// we will only ever make transfers once we've found the
 						// account address. Therefore, we can process these
 						// events in the same loop.
-						fields := decodeEvent("FlowColdStorageProxy.Transferred", evt, hash, height)
-						if fields == nil {
+						event, err := decodeEvent("FlowColdStorageProxy.Transferred", evt, hash, height)
+						if err != nil {
 							skipCache = true
 							continue outer
 						}
+						fields := event.GetFields()
 						if len(fields) != 3 {
 							log.Errorf(
 								"Found FlowColdStorageProxy.Transferred event with %d fields in transaction %x in block %x at height %d",
@@ -604,7 +633,12 @@ outer:
 							skipCache = true
 							continue outer
 						}
-						sender, ok := fields[0].([8]byte)
+
+						// 'from' field
+						sender, ok := cadence.SearchFieldByName(
+							event,
+							"from",
+						).(cadence.Address)
 						if !ok {
 							log.Errorf(
 								"Unable to load the `from` address from FlowColdStorageProxy.Transferred event in transaction %x in block %x at height %d",
@@ -613,7 +647,12 @@ outer:
 							skipCache = true
 							continue outer
 						}
-						receiver, ok := fields[1].([8]byte)
+
+						// 'to' field
+						receiver, ok := cadence.SearchFieldByName(
+							event,
+							"to",
+						).(cadence.Address)
 						if !ok {
 							log.Errorf(
 								"Unable to load the `to` address from FlowColdStorageProxy.Transferred event in transaction %x in block %x at height %d",
@@ -622,7 +661,12 @@ outer:
 							skipCache = true
 							continue outer
 						}
-						amount, ok := fields[2].(uint64)
+
+						// 'amount' field
+						amountValue, ok := cadence.SearchFieldByName(
+							event,
+							"amount",
+						).(cadence.UInt64)
 						if !ok {
 							log.Errorf(
 								"Unable to load the `amount` from FlowColdStorageProxy.Transferred event in transaction %x in block %x at height %d",
@@ -631,6 +675,7 @@ outer:
 							skipCache = true
 							continue outer
 						}
+						amount := uint64(amountValue)
 						txn.Events = append(txn.Events, &model.TransferEvent{
 							Amount:   amount,
 							Receiver: receiver[:],
@@ -659,11 +704,12 @@ outer:
 				for _, evt := range txnResult.Events {
 					switch evt.Type {
 					case i.typTokensDeposited:
-						fields := decodeEvent("FlowToken.TokensDeposited", evt, hash, height)
-						if fields == nil {
+						event, err := decodeEvent("FlowToken.TokensDeposited", evt, hash, height)
+						if err != nil {
 							skipCache = true
 							continue outer
 						}
+						fields := event.GetFields()
 						if len(fields) != 2 {
 							log.Errorf(
 								"Found FlowToken.TokensDeposited event with %d fields in transaction %x in block %x at height %d",
@@ -672,7 +718,12 @@ outer:
 							skipCache = true
 							continue outer
 						}
-						amount, ok := fields[0].(uint64)
+
+						// 'amount' field
+						amountValue, ok := cadence.SearchFieldByName(
+							event,
+							"amount",
+						).(cadence.UInt64)
 						if !ok {
 							log.Errorf(
 								"Unable to load amount from FlowToken.TokensDeposited event in transaction %x in block %x at height %d",
@@ -681,7 +732,14 @@ outer:
 							skipCache = true
 							continue outer
 						}
-						if fields[1] == nil {
+						amount := uint64(amountValue)
+
+						// 'to' field
+						toValue := cadence.SearchFieldByName(
+							event,
+							"to",
+						)
+						if toValue == nil {
 							log.Warnf(
 								"Ignoring FlowToken.TokensDeposited event with a nil address in transaction %x in block %x at height %d",
 								txnHash, hash, height,
@@ -692,7 +750,7 @@ outer:
 							})
 							continue evtloop2
 						}
-						receiver, ok := fields[1].([8]byte)
+						receiver, ok := toValue.(cadence.Address)
 						if !ok {
 							log.Errorf(
 								"Unable to load receiver address from FlowToken.TokensDeposited event in transaction %x in block %x at height %d",
@@ -723,11 +781,12 @@ outer:
 							deposits[string(receiver[:])] += amount
 						}
 					case i.typTokensWithdrawn:
-						fields := decodeEvent("FlowToken.TokensWithdrawn", evt, hash, height)
-						if fields == nil {
+						event, err := decodeEvent("FlowToken.TokensWithdrawn", evt, hash, height)
+						if err != nil {
 							skipCache = true
 							continue outer
 						}
+						fields := event.GetFields()
 						if len(fields) != 2 {
 							log.Errorf(
 								"Found FlowToken.TokensWithdrawn event with %d fields in transaction %x in block %x at height %d",
@@ -736,7 +795,11 @@ outer:
 							skipCache = true
 							continue outer
 						}
-						amount, ok := fields[0].(uint64)
+						// 'amount' field
+						amountValue, ok := cadence.SearchFieldByName(
+							event,
+							"amount",
+						).(cadence.UInt64)
 						if !ok {
 							log.Errorf(
 								"Unable to load amount from FlowToken.TokensWithdrawn event in transaction %x in block %x at height %d",
@@ -745,7 +808,14 @@ outer:
 							skipCache = true
 							continue outer
 						}
-						if fields[1] == nil {
+						amount := uint64(amountValue)
+
+						// 'from' field
+						fromValue := cadence.SearchFieldByName(
+							event,
+							"from",
+						)
+						if fromValue == nil {
 							log.Warnf(
 								"Ignoring FlowToken.TokensWithdrawn event with a nil address in transaction %x in block %x at height %d",
 								txnHash, hash, height,
@@ -756,7 +826,7 @@ outer:
 							})
 							continue evtloop2
 						}
-						sender, ok := fields[1].([8]byte)
+						sender, ok := fromValue.(cadence.Address)
 						if !ok {
 							log.Errorf(
 								"Unable to load sender address from FlowToken.TokensWithdrawn event in transaction %x in block %x at height %d",
