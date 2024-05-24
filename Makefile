@@ -3,6 +3,7 @@
 all: build
 
 go-build:
+	rm -rf data
 	go build -o server cmd/server/server.go
 
 build: go-build
