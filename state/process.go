@@ -593,7 +593,7 @@ outer:
 						amountValue, ok := cadence.SearchFieldByName(
 							event,
 							"amount",
-						).(cadence.UInt64)
+						).(cadence.UFix64)
 						if !ok {
 							log.Errorf(
 								"Unable to load the `amount` from FlowColdStorageProxy.Deposited event in transaction %x in block %x at height %d",
@@ -634,20 +634,6 @@ outer:
 							continue outer
 						}
 
-						// 'from' field
-						sender, ok := cadence.SearchFieldByName(
-							event,
-							"from",
-						).(cadence.Address)
-						if !ok {
-							log.Errorf(
-								"Unable to load the `from` address from FlowColdStorageProxy.Transferred event in transaction %x in block %x at height %d",
-								txnHash, hash, height,
-							)
-							skipCache = true
-							continue outer
-						}
-
 						// 'to' field
 						receiver, ok := cadence.SearchFieldByName(
 							event,
@@ -662,11 +648,30 @@ outer:
 							continue outer
 						}
 
+						// 'from' field
+						fromValue := cadence.SearchFieldByName(
+							event,
+							"from",
+						).(cadence.Optional).Value
+						var sender [8]byte
+
+						if fromValue != nil {
+							sender, ok = fromValue.(cadence.Address)
+							if !ok {
+								log.Errorf(
+									"Unable to load the `from` address from FlowColdStorageProxy.Transferred event in transaction %x in block %x at height %d",
+									txnHash, hash, height,
+								)
+								skipCache = true
+								continue outer
+							}
+						}
+
 						// 'amount' field
 						amountValue, ok := cadence.SearchFieldByName(
 							event,
 							"amount",
-						).(cadence.UInt64)
+						).(cadence.UFix64)
 						if !ok {
 							log.Errorf(
 								"Unable to load the `amount` from FlowColdStorageProxy.Transferred event in transaction %x in block %x at height %d",
@@ -723,7 +728,7 @@ outer:
 						amountValue, ok := cadence.SearchFieldByName(
 							event,
 							"amount",
-						).(cadence.UInt64)
+						).(cadence.UFix64)
 						if !ok {
 							log.Errorf(
 								"Unable to load amount from FlowToken.TokensDeposited event in transaction %x in block %x at height %d",
@@ -738,7 +743,7 @@ outer:
 						toValue := cadence.SearchFieldByName(
 							event,
 							"to",
-						)
+						).(cadence.Optional).Value
 						if toValue == nil {
 							log.Warnf(
 								"Ignoring FlowToken.TokensDeposited event with a nil address in transaction %x in block %x at height %d",
@@ -799,7 +804,7 @@ outer:
 						amountValue, ok := cadence.SearchFieldByName(
 							event,
 							"amount",
-						).(cadence.UInt64)
+						).(cadence.UFix64)
 						if !ok {
 							log.Errorf(
 								"Unable to load amount from FlowToken.TokensWithdrawn event in transaction %x in block %x at height %d",
@@ -814,7 +819,7 @@ outer:
 						fromValue := cadence.SearchFieldByName(
 							event,
 							"from",
-						)
+						).(cadence.Optional).Value
 						if fromValue == nil {
 							log.Warnf(
 								"Ignoring FlowToken.TokensWithdrawn event with a nil address in transaction %x in block %x at height %d",
