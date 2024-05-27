@@ -1,0 +1,33 @@
+{
+  "cache": true,
+  "construction_access_nodes": [
+    {
+      "address": "access.previewnet.nodes.onflow.org:9000"
+    }
+  ],
+  "contracts": {
+    "flow_cold_storage_proxy": "0000000000000000",
+    "flow_fees": "ab086ce9cc29fc80",
+    "flow_token": "4445e7ad11568276",
+    "fungible_token": "a0225e7000ac82a9"
+  },
+  "data_dir": "./data",
+  "disable_consensus_follower": true,
+  "network": "previewnet",
+  "originators": [
+  ],
+  "port": 8080,
+  "spork_seal_tolerance": 10000,
+  "spork_synced_tolerance": 10,
+  "sporks": {
+    "1": {
+      "access_nodes": [
+        {
+          "address": "access.previewnet.nodes.onflow.org:9000"
+        }
+      ],
+      "root_block": 14674593,
+      "version": 6
+    }
+  }
+}
