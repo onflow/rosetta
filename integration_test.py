@@ -463,9 +463,9 @@ def submit_transaction(signed_tx):
 
 
 def main():
-    # clone_flowgo_cmd()
-    # build_flow()
-    # init_localnet()
+    clone_flowgo_cmd()
+    build_flow()
+    init_localnet()
     init_flow_json()
     for i in range(1,number_of_contract_accounts+1):
         account_str = "root-originator-account-" + str(i)
