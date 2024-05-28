@@ -3,7 +3,6 @@
 all: build
 
 go-build:
-	rm -rf data
 	go build -o server cmd/server/server.go
 
 build: go-build
@@ -28,3 +27,6 @@ integration-test-cleanup:
 
 integration-test:
 	python3 integration_test.py
+
+previewnet-integration-test:
+	python3 previewnet_integration_test.py
