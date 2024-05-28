@@ -132,8 +132,6 @@ func TestDeriveEventsHash(t *testing.T) {
 			eventHashes = append(eventHashes, hash)
 		}
 		var execResult *entities.ExecutionResult
-
-		//TODO: ILLIA: chunk[0].EventCollection is empty! but should be equal to hash?
 		execResult, err = client.ExecutionResultForBlockID(ctx, block.Id)
 		require.NoError(t, err)
 		require.Equal(t, len(eventHashes), len(execResult.Chunks))
