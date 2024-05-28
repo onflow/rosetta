@@ -246,7 +246,7 @@ func (s *Server) getOnchainData(ctx context.Context, addr []byte, block []byte) 
 	if err != nil {
 		return nil, handleExecutionErr(err, "execute "+scriptName)
 	}
-	arrayValue, ok := resp.(cadence.Array)
+	structValue, ok := resp.(cadence.Struct)
 	if !ok {
 		return nil, wrapErrorf(
 			errInternal,
@@ -254,39 +254,39 @@ func (s *Server) getOnchainData(ctx context.Context, addr []byte, block []byte) 
 			scriptName,
 		)
 	}
-	fields := arrayValue.Values
+	fields := cadence.FieldsMappedByName(structValue)
 	if len(fields) != 3 {
 		return nil, wrapErrorf(
 			errInternal,
 			"expected 3 fields for the %s result: got %d",
-			scriptName, len(arrayValue.Values),
+			scriptName, len(fields),
 		)
 	}
 	onchain := &onchainData{}
-	defaultBalance, ok := fields[0].(cadence.UInt64)
+	defaultBalance, ok := fields["default_balance"].(cadence.UFix64)
 	if !ok {
 		return nil, wrapErrorf(
 			errInternal,
 			"expected first field of the %s result to be uint64: got %T",
-			scriptName, fields[0],
+			scriptName, fields["default_balance"],
 		)
 	}
 	onchain.DefaultBalance = uint64(defaultBalance)
-	isProxy, ok := fields[1].(cadence.Bool)
+	isProxy, ok := fields["is_proxy"].(cadence.Bool)
 	if !ok {
 		return nil, wrapErrorf(
 			errInternal,
 			"expected second field of the %s result to be bool: got %T",
-			scriptName, fields[1],
+			scriptName, fields["is_proxy"],
 		)
 	}
 	onchain.IsProxy = bool(isProxy)
-	proxyBalance, ok := fields[2].(cadence.UInt64)
+	proxyBalance, ok := fields["proxy_balance"].(cadence.UFix64)
 	if !ok {
 		return nil, wrapErrorf(
 			errInternal,
 			"expected third field of the %s result to be uint64: got %T",
-			scriptName, fields[2],
+			scriptName, fields["proxy_balance"],
 		)
 	}
 	onchain.ProxyBalance = uint64(proxyBalance)

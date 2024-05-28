@@ -164,11 +164,11 @@ func (s *Server) ConstructionMetadata(ctx context.Context, r *types.Construction
 				"failed to execute compute_fees: %s", err,
 			)
 		}
-		cost, ok := resp.(cadence.UInt64)
+		cost, ok := resp.(cadence.UFix64)
 		if !ok {
 			return nil, wrapErrorf(
 				errInternal,
-				"failed to convert compute_fees result to uint64",
+				"failed to convert compute_fees result to cadence.UFix64",
 			)
 		}
 		opts.Fees = uint64(cost) + (opts.NewAccounts * fees.MinimumAccountBalance)
