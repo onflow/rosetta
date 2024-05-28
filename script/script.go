@@ -20,11 +20,11 @@ import FungibleToken from 0x{{.Contracts.FungibleToken}}
 transaction(receiver: Address, amount: UFix64) {
 
     // The Vault resource that holds the tokens that are being transferred.
-    let xfer: @FungibleToken.Vault
+    let xfer:  @{FungibleToken.Vault}
 
-    prepare(sender: AuthAccount) {
+    prepare(sender: auth(BorrowValue) &Account) {
         // Get a reference to the sender's FlowToken.Vault.
-        let vault = sender.borrow<&FlowToken.Vault>(from: /storage/flowTokenVault)
+        let vault = sender.storage.borrow<auth(FungibleToken.Withdraw) &FlowToken.Vault>(from: /storage/flowTokenVault)
             ?? panic("Could not borrow a reference to the sender's vault")
 
         // Withdraw tokens from the sender's FlowToken.Vault.
@@ -35,8 +35,7 @@ transaction(receiver: Address, amount: UFix64) {
         // Get a reference to the receiver's default FungibleToken.Receiver
         // for FLOW tokens.
         let receiver = getAccount(receiver)
-            .getCapability(/public/flowTokenReceiver)
-            .borrow<&{FungibleToken.Receiver}>()
+           .capabilities.borrow<&{FungibleToken.Receiver}>(/public/flowTokenReceiver)
             ?? panic("Could not borrow a reference to the receiver's vault")
 
         // Deposit the withdrawn tokens in the receiver's vault.
@@ -48,17 +47,17 @@ transaction(receiver: Address, amount: UFix64) {
 // ComputeFees computes the transaction fees.
 const ComputeFees = `import FlowFees from 0x{{.Contracts.FlowFees}}
 
-pub fun main(inclusionEffort: UFix64, executionEffort: UFix64): UFix64 {
+access(all) fun main(inclusionEffort: UFix64, executionEffort: UFix64): UFix64 {
     return FlowFees.computeFees(inclusionEffort: inclusionEffort, executionEffort: executionEffort)
 }
 `
 
 // CreateAccount defines the template for creating new Flow accounts.
 const CreateAccount = `transaction(publicKeys: [String]) {
-    prepare(payer: AuthAccount) {
+    prepare(payer: auth(AddKey, BorrowValue) &Account) {
         for key in publicKeys {
             // Create an account and set the account public key.
-            let acct = AuthAccount(payer: payer)
+            let acct = Account(payer: payer)
             let publicKey = PublicKey(
                 publicKey: key.decodeHex(),
                 signatureAlgorithm: SignatureAlgorithm.ECDSA_secp256k1
@@ -94,10 +93,10 @@ const GetBalances = `import FlowColdStorageProxy from 0x{{.Contracts.FlowColdSto
 import FlowToken from 0x{{.Contracts.FlowToken}}
 import FungibleToken from 0x{{.Contracts.FungibleToken}}
 
-pub struct AccountBalances {
-    pub let default_balance: UFix64
-    pub let is_proxy: Bool
-    pub let proxy_balance: UFix64
+access(all) struct AccountBalances {
+    access(all) let default_balance: UFix64
+    access(all) let is_proxy: Bool
+    access(all) let proxy_balance: UFix64
 
     init(default_balance: UFix64, is_proxy: Bool, proxy_balance: UFix64) {
         self.default_balance = default_balance
@@ -106,13 +105,12 @@ pub struct AccountBalances {
     }
 }
 
-pub fun main(addr: Address): AccountBalances {
+access(all) fun main(addr: Address): AccountBalances {
     let acct = getAccount(addr)
-    let balanceRef = acct.getCapability(/public/flowTokenBalance)
-                         .borrow<&FlowToken.Vault{FungibleToken.Balance}>()!
+    let balanceRef = acct.capabilities.borrow<&{FungibleToken.Balance}>(/public/flowTokenBalance)!
     var is_proxy = false
     var proxy_balance = 0.0
-    let ref = acct.getCapability(FlowColdStorageProxy.VaultCapabilityPublicPath).borrow<&FlowColdStorageProxy.Vault>()
+    let ref = acct.capabilities.borrow<&{FlowColdStorageProxy.Vault}>(FlowColdStorageProxy.VaultCapabilityPublicPath)
     if let vault = ref {
         is_proxy = true
         proxy_balance = vault.getBalance()
@@ -130,10 +128,10 @@ pub fun main(addr: Address): AccountBalances {
 const GetBalancesBasic = `import FlowToken from 0x{{.Contracts.FlowToken}}
 import FungibleToken from 0x{{.Contracts.FungibleToken}}
 
-pub struct AccountBalances {
-    pub let default_balance: UFix64
-    pub let is_proxy: Bool
-    pub let proxy_balance: UFix64
+access(all) struct AccountBalances {
+    access(all) let default_balance: UFix64
+    access(all) let is_proxy: Bool
+    access(all) let proxy_balance: UFix64
 
     init(default_balance: UFix64, is_proxy: Bool, proxy_balance: UFix64) {
         self.default_balance = default_balance
@@ -142,10 +140,9 @@ pub struct AccountBalances {
     }
 }
 
-pub fun main(addr: Address): AccountBalances {
+access(all) fun main(addr: Address): AccountBalances {
     let acct = getAccount(addr)
-    let balanceRef = acct.getCapability(/public/flowTokenBalance)
-                         .borrow<&FlowToken.Vault{FungibleToken.Balance}>()!
+    let balanceRef = acct.capabilities.borrow<&{FungibleToken.Balance}>(/public/flowTokenBalance)!
     return AccountBalances(
         default_balance: balanceRef.balance,
         is_proxy: false,
@@ -162,7 +159,7 @@ pub fun main(addr: Address): AccountBalances {
 // FlowColdStorageProxy Vault, then it will return -1.
 const GetProxyNonce = `import FlowColdStorageProxy from 0x{{.Contracts.FlowColdStorageProxy}}
 
-pub fun main(addr: Address): Int64 {
+access(all) fun main(addr: Address): Int64 {
     let acct = getAccount(addr)
     let ref = acct.getCapability(FlowColdStorageProxy.VaultCapabilityPublicPath).borrow<&FlowColdStorageProxy.Vault>()
     if let vault = ref {
@@ -179,7 +176,7 @@ pub fun main(addr: Address): Int64 {
 // FlowColdStorageProxy Vault, then it will return the empty string.
 const GetProxyPublicKey = `import FlowColdStorageProxy from 0x{{.Contracts.FlowColdStorageProxy}}
 
-pub fun main(addr: Address): String {
+access(all) fun main(addr: Address): String {
     let acct = getAccount(addr)
     let ref = acct.getCapability(FlowColdStorageProxy.VaultCapabilityPublicPath).borrow<&FlowColdStorageProxy.Vault>()
     if let vault = ref {
