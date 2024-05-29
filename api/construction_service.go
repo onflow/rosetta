@@ -135,7 +135,7 @@ func (s *Server) ConstructionMetadata(ctx context.Context, r *types.Construction
 			if !ok {
 				return nil, wrapErrorf(
 					errInternal,
-					"failed to convert get_proxy_nonce result to int64",
+					"expected type cadence.Int64 for nonce, got %T", resp,
 				)
 			}
 			opts.SequenceNumber = int64(nonce)
@@ -168,7 +168,7 @@ func (s *Server) ConstructionMetadata(ctx context.Context, r *types.Construction
 		if !ok {
 			return nil, wrapErrorf(
 				errInternal,
-				"failed to convert compute_fees result to cadence.UFix64",
+				"expected type cadence.UFix64 for cost, got %T", resp,
 			)
 		}
 		opts.Fees = uint64(cost) + (opts.NewAccounts * fees.MinimumAccountBalance)

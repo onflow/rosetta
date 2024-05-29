@@ -176,7 +176,7 @@ access(all) fun main(addr: Address): Int64 {
 // FlowColdStorageProxy Vault, then it will return the empty string.
 const GetProxyPublicKey = `import FlowColdStorageProxy from 0x{{.Contracts.FlowColdStorageProxy}}
 
-access(all) fun main(addr: Address): String {
+pub fun main(addr: Address): String {
     let acct = getAccount(addr)
     let ref = acct.getCapability(FlowColdStorageProxy.VaultCapabilityPublicPath).borrow<&FlowColdStorageProxy.Vault>()
     if let vault = ref {

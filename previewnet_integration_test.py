@@ -48,12 +48,15 @@ def create_originator():
         }
     }
 
-    with open('flow.json', "r+") as json_file:
-        data = json.load(json_file)
-        data["accounts"]["originator"] = contract_account_value
-        json_file.seek(0)
-        json.dump(data, json_file, indent=4)
-        json_file.truncate()
+    try:
+        with open('flow.json', "r+") as json_file:
+            data = json.load(json_file)
+            data["accounts"]["originator"] = contract_account_value
+            json_file.seek(0)
+            json.dump(data, json_file, indent=4)
+            json_file.truncate()
+    except IOError as e:
+        print(f"Error opening or writing to file: {e}")
 
     # TODO: uncomment when FlowColdStorageProxy.cdc updated to Cadence 1.0
     # deploy_contracts("originator")
@@ -111,7 +114,10 @@ def get_account_keys(account):
 
 def request_router(target_url, body):
     headers = {'Content-type': 'application/json'}
-    r = requests.post(target_url, data=json.dumps(body), headers=headers)
+    try:
+        r = requests.post(target_url, data=json.dumps(body), headers=headers)
+    except requests.exceptions.RequestException as e:
+        print(f"Network request failed: {e}")
     return r.json()
 
 
@@ -417,8 +423,8 @@ def main():
 
     _, _, _, new_address = get_account_keys("create_account")
     rosetta_transfer(address, new_address, 50)
-    time.sleep(30) ## Hacky fix to not check nonce
     # TODO: uncomment when FlowColdStorageProxy.cdc updated to Cadence 1.0
+    # time.sleep(30) ## Hacky fix to not check nonce
     # rosetta_transfer(address, new_proxy_address, 50)
     # time.sleep(30)
 
