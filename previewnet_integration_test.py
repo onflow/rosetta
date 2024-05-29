@@ -1,8 +1,5 @@
 import json
 import subprocess
-from threading import Thread
-import os
-import csv
 import requests
 import time
 
@@ -78,11 +75,11 @@ def create_account():
 
 def deploy_contracts(account_name):
     ## Need to modify flow contract addresses
-    contract_path = "/script/cadence/contracts/FlowColdStorageProxy.cdc"
+    contract_path = "./script/cadence/contracts/FlowColdStorageProxy.cdc"
     print("FlowToken from 0x4445e7ad11568276")
     print("FungibleToken from 0xa0225e7000ac82a9")
     _ = input("Modify the FlowColdStorageProxy contract at " + contract_path + " to use the correct contract addresses for previewnet.")
-    deploy_contract_cmd = "flow accounts add-contract --signer " + account_name + " FlowColdStorageProxy " + contract_path
+    deploy_contract_cmd = "flow accounts add-contract --signer " + account_name + contract_path
     cmds = deploy_contract_cmd.split(" ") + network_flag
     result = subprocess.run(cmds, stdout=subprocess.PIPE)
     print(result.stdout.decode('utf-8'))
