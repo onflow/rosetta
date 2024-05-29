@@ -392,7 +392,7 @@ func (c *chainConfig) parseAndValidateSporks(ctx context.Context, result *Chain)
 			RootBlock: cfg.RootBlock,
 			Version:   cfg.Version,
 		}
-		if spork.Version < 1 || spork.Version > 6 {
+		if spork.Version < 1 || spork.Version > 7 {
 			log.Fatalf(
 				"Invalid .version value for %s-%d in %s",
 				c.Network, id, c.filename,

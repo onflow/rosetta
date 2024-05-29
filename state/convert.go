@@ -219,7 +219,7 @@ func deriveBlockHash(spork *config.Spork, hdr flowHeader) flow.Identifier {
 		return deriveBlockHashV1(hdr)
 	case 3, 4:
 		return deriveBlockHashV3(hdr)
-	case 5, 6:
+	case 5, 6, 7:
 		return deriveBlockHashV5(hdr)
 	}
 	panic("unreachable code")
@@ -310,7 +310,7 @@ func deriveEventsHash(spork *config.Spork, events []flowEvent) flow.Identifier {
 		return deriveEventsHashV1(events)
 	case 2, 3:
 		return deriveEventsHashV2(events)
-	case 4, 5, 6:
+	case 4, 5, 6, 7:
 		return deriveEventsHashV4(events)
 	}
 	panic("unreachable code")
@@ -406,7 +406,7 @@ func deriveExecutionResult(spork *config.Spork, exec flowExecutionResult) flow.I
 	switch spork.Version {
 	case 1:
 		return deriveExecutionResultV1(exec)
-	case 2, 3, 4, 5, 6:
+	case 2, 3, 4, 5, 6, 7:
 		return deriveExecutionResultV2(exec)
 	}
 	panic("unreachable code")
@@ -579,16 +579,48 @@ func verifyBlockHash(spork *config.Spork, hash []byte, height uint64, hdr *entit
 	}
 	resultHash := flow.MerkleRoot(resultIDs...)
 	resultHashV5 := flow.MerkleRoot(resultIDsV5...)
-	payloadHash := flow.ConcatSum(collectionHash, sealHash, receiptHash, resultHash, toFlowIdentifier(block.ProtocolStateId))
-	payloadHashV5 := flow.ConcatSum(collectionHash, sealHash, receiptHash, resultHashV5, toFlowIdentifier(block.ProtocolStateId))
-	if payloadHash != xhdr.PayloadHash && payloadHashV5 != xhdr.PayloadHash {
+
+	var payloadHash flow.Identifier
+	switch spork.Version {
+	case 1, 2, 3, 4, 5:
+		payloadHash = derivePayloadHashV1(collectionHash, sealHash, receiptHash, resultHashV5)
+	case 6:
+		payloadHash = derivePayloadHashV1(collectionHash, sealHash, receiptHash, resultHash)
+	case 7:
+		payloadHash = derivePayloadHashV7(collectionHash, sealHash, receiptHash, resultHash, toFlowIdentifier(block.ProtocolStateId))
+	default:
+		panic("unreachable code")
+	}
+	if payloadHash != xhdr.PayloadHash {
 		log.Errorf(
-			"Mismatching payload hash for block %x at height %d: expected %x, got %x for version 6 and %x for Versions before it",
-			hash, height, xhdr.PayloadHash[:], payloadHash[:], payloadHashV5[:],
+			"Mismatching payload hash for block %x at height %d: expected %x, got %x for version %d",
+			hash, height, xhdr.PayloadHash[:], payloadHash[:], spork.Version,
 		)
 		return false
 	}
 	return true
+}
+
+// derivePayloadHashV1 generates a payload hash for block versions V1 - V6.
+// It concatenates and hashes the provided collection, seal, receipt, and result hashes.
+func derivePayloadHashV1(collectionHash flow.Identifier,
+	sealHash flow.Identifier,
+	receiptHash flow.Identifier,
+	resultHash flow.Identifier,
+) flow.Identifier {
+	return flow.ConcatSum(collectionHash, sealHash, receiptHash, resultHash)
+}
+
+// derivePayloadHashV7 generates a payload hash for block version V7.
+// It concatenates and hashes the provided collection, seal, receipt, result, and protocol state hashes.
+func derivePayloadHashV7(
+	collectionHash flow.Identifier,
+	sealHash flow.Identifier,
+	receiptHash flow.Identifier,
+	resultHash flow.Identifier,
+	protocolStateId flow.Identifier,
+) flow.Identifier {
+	return flow.ConcatSum(collectionHash, sealHash, receiptHash, resultHash, protocolStateId)
 }
 
 type flowEvent struct {
