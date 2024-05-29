@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/onflow/cadence"
+	"github.com/onflow/cadence/encoding/ccf"
 	jsoncdc "github.com/onflow/cadence/encoding/json"
 	_ "github.com/onflow/cadence/runtime/stdlib" // imported for side-effects only
 	"github.com/onflow/crypto"
@@ -181,7 +182,7 @@ func convertExecutionResult(hash []byte, height uint64, result *entities.Executi
 }
 
 func decodeEvent(typ string, evt *entities.Event, hash []byte, height uint64) (cadence.Event, error) {
-	val, err := jsoncdc.Decode(access.NoopMemoryGauge, evt.Payload)
+	val, err := decodePayload(evt.Payload)
 	if err != nil {
 		log.Errorf(
 			"Failed to decode %s event payload in transaction %x in block %x at height %d: %s",
@@ -201,6 +202,15 @@ func decodeEvent(typ string, evt *entities.Event, hash []byte, height uint64) (c
 	}
 
 	return event, nil
+}
+
+func decodePayload(payload []byte) (cadence.Value, error) {
+	if ccf.HasMsgPrefix(payload) {
+		// modern Access nodes support encoding events in CCF format
+		return ccf.Decode(access.NoopMemoryGauge, payload)
+	}
+
+	return jsoncdc.Decode(access.NoopMemoryGauge, payload)
 }
 
 func deriveBlockHash(spork *config.Spork, hdr flowHeader) flow.Identifier {
