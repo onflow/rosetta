@@ -326,16 +326,11 @@ outer:
 				}
 			}
 			var resultID flow.Identifier
-			var resultIDV5 flow.Identifier
 			exec, convOk := convertExecutionResult(hash, height, execResult)
 			if convOk {
 				resultID = deriveExecutionResult(spork, exec)
 			}
-			execV5, convOkV5 := convertExecutionResultV5(hash, height, execResult)
-			if convOkV5 {
-				resultIDV5 = deriveExecutionResultV5(execV5)
-			}
-			if !convOk && !convOkV5 {
+			if !convOk {
 				skipCache = true
 				continue
 			}
@@ -344,7 +339,7 @@ outer:
 				sealedResult, foundOk = string(resultID[:]), true
 			}
 			if foundOk {
-				if string(resultID[:]) != sealedResult && string(resultIDV5[:]) != sealedResult {
+				if string(resultID[:]) != sealedResult {
 					log.Errorf(
 						"Got mismatching execution result hash for block %x at height %d: expected %x, got %x",
 						hash, height, sealedResult, resultID[:],
