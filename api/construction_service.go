@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"math/big"
 	"strconv"
 	"strings"
 
@@ -132,14 +131,14 @@ func (s *Server) ConstructionMetadata(ctx context.Context, r *types.Construction
 					"failed to execute get_proxy_nonce: %s", err,
 				)
 			}
-			nonce, ok := resp.ToGoValue().(int64)
+			nonce, ok := resp.(cadence.Int64)
 			if !ok {
 				return nil, wrapErrorf(
 					errInternal,
-					"failed to convert get_proxy_nonce result to int64",
+					"expected type cadence.Int64 for nonce, got %T", resp,
 				)
 			}
-			opts.SequenceNumber = nonce
+			opts.SequenceNumber = int64(nonce)
 		}
 	} else {
 		latest := s.Index.Latest()
@@ -165,14 +164,14 @@ func (s *Server) ConstructionMetadata(ctx context.Context, r *types.Construction
 				"failed to execute compute_fees: %s", err,
 			)
 		}
-		cost, ok := resp.ToGoValue().(uint64)
+		cost, ok := resp.(cadence.UFix64)
 		if !ok {
 			return nil, wrapErrorf(
 				errInternal,
-				"failed to convert compute_fees result to uint64",
+				"expected type cadence.UFix64 for cost, got %T", resp,
 			)
 		}
-		opts.Fees = cost + (opts.NewAccounts * fees.MinimumAccountBalance)
+		opts.Fees = uint64(cost) + (opts.NewAccounts * fees.MinimumAccountBalance)
 		trace.SetAttributes(
 			ctx,
 			trace.String("access_api_server", client.ServerAddress()),
@@ -1137,7 +1136,7 @@ func decodeContractOps(txn *entities.Transaction, signed bool) (*types.Construct
 			errInvalidTransactionPayload, "unable to decode transaction arg: %s", err,
 		)
 	}
-	update, ok := raw.ToGoValue().(bool)
+	update, ok := raw.(cadence.Bool)
 	if !ok {
 		return nil, wrapErrorf(
 			errInvalidTransactionPayload, "unable to convert transaction arg to string",
@@ -1153,7 +1152,7 @@ func decodeContractOps(txn *entities.Transaction, signed bool) (*types.Construct
 			errInvalidTransactionPayload, "unable to decode transaction arg: %s", err,
 		)
 	}
-	name, ok := raw.ToGoValue().(string)
+	name, ok := raw.(cadence.String)
 	if !ok {
 		return nil, wrapErrorf(
 			errInvalidTransactionPayload, "unable to convert transaction arg to string",
@@ -1165,7 +1164,7 @@ func decodeContractOps(txn *entities.Transaction, signed bool) (*types.Construct
 			errInvalidTransactionPayload, "unable to decode transaction arg: %s", err,
 		)
 	}
-	code, ok := raw.ToGoValue().(string)
+	code, ok := raw.(cadence.String)
 	if !ok {
 		return nil, wrapErrorf(
 			errInvalidTransactionPayload, "unable to convert transaction arg to string",
@@ -1177,7 +1176,7 @@ func decodeContractOps(txn *entities.Transaction, signed bool) (*types.Construct
 			errInvalidTransactionPayload, "unable to decode transaction arg: %s", err,
 		)
 	}
-	prevKeyIndex, ok := raw.ToGoValue().(*big.Int)
+	prevKeyIndex, ok := raw.(cadence.Int)
 	if !ok {
 		return nil, wrapErrorf(
 			errInvalidTransactionPayload, "unable to convert transaction arg to *big.Int",
@@ -1189,13 +1188,13 @@ func decodeContractOps(txn *entities.Transaction, signed bool) (*types.Construct
 			errInvalidTransactionPayload, "unable to decode transaction arg: %s", err,
 		)
 	}
-	rawKey, ok := raw.ToGoValue().(string)
+	rawKey, ok := raw.(cadence.String)
 	if !ok {
 		return nil, wrapErrorf(
 			errInvalidTransactionPayload, "unable to convert transaction arg to string",
 		)
 	}
-	flowKey, err := hex.DecodeString(rawKey)
+	flowKey, err := hex.DecodeString(string(rawKey))
 	if err != nil {
 		return nil, wrapErrorf(
 			errInvalidTransactionPayload,
@@ -1217,7 +1216,7 @@ func decodeContractOps(txn *entities.Transaction, signed bool) (*types.Construct
 			errInvalidTransactionPayload, "unable to decode transaction arg: %s", err,
 		)
 	}
-	keyMessage, ok := raw.ToGoValue().(string)
+	keyMessage, ok := raw.(cadence.String)
 	if !ok {
 		return nil, wrapErrorf(
 			errInvalidTransactionPayload, "unable to convert transaction arg to string",
@@ -1229,13 +1228,13 @@ func decodeContractOps(txn *entities.Transaction, signed bool) (*types.Construct
 			errInvalidTransactionPayload, "unable to decode transaction arg: %s", err,
 		)
 	}
-	rawSignature, ok := raw.ToGoValue().(string)
+	rawSignature, ok := raw.(cadence.String)
 	if !ok {
 		return nil, wrapErrorf(
 			errInvalidTransactionPayload, "unable to convert transaction arg to string",
 		)
 	}
-	keySignature, err := crypto.ConvertFlowSignature(rawSignature)
+	keySignature, err := crypto.ConvertFlowSignature(string(rawSignature))
 	if err != nil {
 		return nil, wrapErrorf(
 			errInvalidTransactionPayload,
@@ -1249,7 +1248,7 @@ func decodeContractOps(txn *entities.Transaction, signed bool) (*types.Construct
 			errInvalidTransactionPayload, "unable to decode transaction arg: %s", err,
 		)
 	}
-	keyMetadata, ok := raw.ToGoValue().(string)
+	keyMetadata, ok := raw.(cadence.String)
 	if !ok {
 		return nil, wrapErrorf(
 			errInvalidTransactionPayload, "unable to convert transaction arg to string",
@@ -1264,7 +1263,7 @@ func decodeContractOps(txn *entities.Transaction, signed bool) (*types.Construct
 				"key_metadata":   keyMetadata,
 				"key_signature":  keySignature,
 				"new_key":        hex.EncodeToString(newKey),
-				"prev_key_index": prevKeyIndex.Int64(),
+				"prev_key_index": prevKeyIndex.Value.Int64(),
 			},
 			OperationIdentifier: &types.OperationIdentifier{
 				Index: 0,
@@ -1289,13 +1288,13 @@ func decodeCreateAccountOps(txn *entities.Transaction, proxy bool, signed bool) 
 		)
 	}
 	if proxy {
-		key, ok := raw.ToGoValue().(string)
+		key, ok := raw.(cadence.String)
 		if !ok {
 			return nil, wrapErrorf(
 				errInvalidTransactionPayload, "unable to convert transaction arg to string",
 			)
 		}
-		pub, err := hex.DecodeString(key)
+		pub, err := hex.DecodeString(string(key))
 		if err != nil {
 			return nil, wrapErrorf(
 				errInvalidTransactionPayload,
@@ -1316,20 +1315,20 @@ func decodeCreateAccountOps(txn *entities.Transaction, proxy bool, signed bool) 
 			Type: opCreateProxyAccount,
 		})
 	} else {
-		xs, ok := raw.ToGoValue().([]interface{})
+		xs, ok := raw.(cadence.Array)
 		if !ok {
 			return nil, wrapErrorf(
 				errInvalidTransactionPayload, "unable to convert transaction arg to array",
 			)
 		}
-		for _, val := range xs {
-			key, ok := val.(string)
+		for _, val := range xs.Values {
+			key, ok := val.(cadence.String)
 			if !ok {
 				return nil, wrapErrorf(
 					errInvalidTransactionPayload, "unable to convert transaction arg elem to string",
 				)
 			}
-			pub, err := hex.DecodeString(key)
+			pub, err := hex.DecodeString(string(key))
 			if err != nil {
 				return nil, wrapErrorf(
 					errInvalidTransactionPayload,
@@ -1402,7 +1401,7 @@ func decodeTransferOps(txn *entities.Transaction, proxy bool, signed bool) (*typ
 				errInvalidTransactionPayload, "unable to decode sender transaction arg: %s", err,
 			)
 		}
-		addr, ok := raw.ToGoValue().([8]byte)
+		addr, ok := raw.(cadence.Address)
 		if !ok {
 			return nil, wrapErrorf(
 				errInvalidTransactionPayload, "unable to convert sender arg to address",
@@ -1417,7 +1416,7 @@ func decodeTransferOps(txn *entities.Transaction, proxy bool, signed bool) (*typ
 			errInvalidTransactionPayload, "unable to decode receiver transaction arg: %s", err,
 		)
 	}
-	receiver, ok := raw.ToGoValue().([8]byte)
+	receiver, ok := raw.(cadence.Address)
 	if !ok {
 		return nil, wrapErrorf(
 			errInvalidTransactionPayload, "unable to convert receiver arg to address",
@@ -1429,7 +1428,7 @@ func decodeTransferOps(txn *entities.Transaction, proxy bool, signed bool) (*typ
 			errInvalidTransactionPayload, "unable to decode amount transaction arg: %s", err,
 		)
 	}
-	amount, ok := raw.ToGoValue().(uint64)
+	amount, ok := raw.(cadence.UInt64)
 	if !ok {
 		return nil, wrapErrorf(
 			errInvalidTransactionPayload, "unable to convert amount transaction arg to uint64",
@@ -1444,7 +1443,7 @@ func decodeTransferOps(txn *entities.Transaction, proxy bool, signed bool) (*typ
 				errInvalidTransactionPayload, "unable to decode nonce transaction arg: %s", err,
 			)
 		}
-		_, ok := raw.ToGoValue().(int64)
+		_, ok := raw.(cadence.Int64)
 		if !ok {
 			return nil, wrapErrorf(
 				errInvalidTransactionPayload, "unable to convert nonce transaction arg to int64",
@@ -1456,7 +1455,7 @@ func decodeTransferOps(txn *entities.Transaction, proxy bool, signed bool) (*typ
 				errInvalidTransactionPayload, "unable to decode sig transaction arg: %s", err,
 			)
 		}
-		_, ok = raw.ToGoValue().(string)
+		_, ok = raw.(cadence.String)
 		if !ok {
 			return nil, wrapErrorf(
 				errInvalidTransactionPayload, "unable to convert sig transaction arg to string",
@@ -1470,7 +1469,7 @@ func decodeTransferOps(txn *entities.Transaction, proxy bool, signed bool) (*typ
 			},
 			Amount: &types.Amount{
 				Currency: flowCurrency,
-				Value:    "-" + strconv.FormatUint(amount, 10),
+				Value:    "-" + strconv.FormatUint(uint64(amount), 10),
 			},
 			OperationIdentifier: &types.OperationIdentifier{
 				Index: 0,
@@ -1483,7 +1482,7 @@ func decodeTransferOps(txn *entities.Transaction, proxy bool, signed bool) (*typ
 			},
 			Amount: &types.Amount{
 				Currency: flowCurrency,
-				Value:    strconv.FormatUint(amount, 10),
+				Value:    strconv.FormatUint(uint64(amount), 10),
 			},
 			OperationIdentifier: &types.OperationIdentifier{
 				Index: 1,

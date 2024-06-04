@@ -1,4 +1,4 @@
-pub fun main(addr: Address): Int {
+access(all) fun main(addr: Address): Int {
     let acct = getAccount(addr)
     var count = 0
     var index = 0

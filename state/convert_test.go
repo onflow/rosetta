@@ -60,21 +60,16 @@ func TestVerifyExecutionResultHash(t *testing.T) {
 			sealedResults[string(seal.BlockId)] = string(seal.ResultId)
 		}
 		var resultID flow.Identifier
-		var resultIDV5 flow.Identifier
 		exec, ok := convertExecutionResult(block.Id, blockHeight, execResult)
 		if ok {
 			resultID = deriveExecutionResult(spork, exec)
 		}
-		execV5, okV5 := convertExecutionResultV5(block.Id, blockHeight, execResult)
-		if okV5 {
-			resultIDV5 = deriveExecutionResultV5(execV5)
-		}
-		if !ok && !okV5 {
+		if !ok {
 			require.Fail(t, "unable to covert from either hash")
 		}
 		sealedResult, foundOk := sealedResults[string(block.Id)]
 		if foundOk {
-			if string(resultID[:]) != sealedResult && string(resultIDV5[:]) != sealedResult {
+			if string(resultID[:]) != sealedResult {
 				require.Fail(t, "target error")
 			}
 		}
