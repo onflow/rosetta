@@ -161,7 +161,7 @@ const GetProxyNonce = `import FlowColdStorageProxy from 0x{{.Contracts.FlowColdS
 
 access(all) fun main(addr: Address): Int64 {
     let acct = getAccount(addr)
-    let ref = acct.getCapability(FlowColdStorageProxy.VaultCapabilityPublicPath).borrow<&FlowColdStorageProxy.Vault>()
+    let ref = acct.capabilities.borrow<&FlowColdStorageProxy.Vault>(FlowColdStorageProxy.VaultCapabilityPublicPath)
     if let vault = ref {
         return vault.lastNonce + 1
     }
@@ -178,7 +178,7 @@ const GetProxyPublicKey = `import FlowColdStorageProxy from 0x{{.Contracts.FlowC
 
 pub fun main(addr: Address): String {
     let acct = getAccount(addr)
-    let ref = acct.getCapability(FlowColdStorageProxy.VaultCapabilityPublicPath).borrow<&FlowColdStorageProxy.Vault>()
+    let ref = acct.capabilities.borrow<&FlowColdStorageProxy.Vault>(FlowColdStorageProxy.VaultCapabilityPublicPath)
     if let vault = ref {
         return String.encodeHex(vault.getPublicKey())
     }
@@ -196,7 +196,7 @@ transaction(sender: Address, receiver: Address, amount: UFix64, nonce: Int64, si
     execute {
         // Get a reference to the sender's FlowColdStorageProxy.Vault.
         let acct = getAccount(sender)
-        let vault = acct.getCapability(FlowColdStorageProxy.VaultCapabilityPublicPath).borrow<&FlowColdStorageProxy.Vault>()!
+        let vault = acct.capabilities.borrow<&FlowColdStorageProxy.Vault>(FlowColdStorageProxy.VaultCapabilityPublicPath)!
 
         // Transfer tokens to the receiver.
         vault.transfer(receiver: receiver, amount: amount, nonce: nonce, sig: sig.decodeHex())

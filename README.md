@@ -613,7 +613,8 @@ transaction(sender: Address, receiver: Address, amount: UFix64, nonce: Int64, si
     execute {
         // Get a reference to the sender's FlowColdStorageProxy Vault.
         let acct = getAccount(sender)
-        let vault = acct.getCapability(FlowColdStorageProxyVault.VaultCapabilityPublicPath).borrow<&FlowColdStorageProxy.Vault>()!
+        let vault = acct.capabilities.borrow<&{FlowColdStorageProxy.Vault}>(FlowColdStorageProxy.VaultCapabilityPublicPath)!
+
 
         // Transfer tokens to the receiver.
         vault.transfer(receiver: receiver, amount: amount, nonce: nonce, sig: sig.decodeHex())
@@ -1621,8 +1622,7 @@ transaction(receiver: Address, amount: UFix64) {
     }
     execute {
         let receiver = getAccount(receiver)
-            .getCapability(/public/flowTokenReceiver)
-            .borrow<&{FungibleToken.Receiver}>()!
+            .capabilities.borrow<&{FungibleToken.Receiver}>(/public/flowTokenReceiver)!
         receiver.deposit(from: <-self.xfer)
     }
 }
