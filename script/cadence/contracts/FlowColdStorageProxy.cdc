@@ -12,22 +12,22 @@ import FungibleToken from 0xee82856bf20e2aa6
 // Combined with an immutable owner account, i.e. an account without any
 // registered keys, this can also be used to enable a more "locked down" account
 // for doing sends/receives of FLOW tokens.
-pub contract FlowColdStorageProxy {
+access(all) contract FlowColdStorageProxy {
 
-    pub let VaultCapabilityPublicPath: PublicPath
-    pub let VaultCapabilityStoragePath: StoragePath
+    access(all) let VaultCapabilityPublicPath: PublicPath
+    access(all) let VaultCapabilityStoragePath: StoragePath
 
     // Created is emitted when a new FlowColdStorageProxy.Vault is set up on an
     // account.
-    pub event Created(account: Address, publicKey: String)
+    access(all) event Created(account: Address, publicKey: String)
 
     // Deposited is emitted when FLOW tokens are deposited to the
     // FlowColdStorageProxy.Vault.
-    pub event Deposited(account: Address, amount: UFix64)
+    access(all) event Deposited(account: Address, amount: UFix64)
 
     // Transferred is emitted when a transfer takes place from a
     // FlowColdStorageProxy.Vault.
-    pub event Transferred(from: Address?, to: Address, amount: UFix64)
+    access(all) event Transferred(from: Address?, to: Address, amount: UFix64)
 
     // Vault implements FungibleToken.Receiver and some additional methods for
     // making transfers and getting the balance.
@@ -40,8 +40,8 @@ pub contract FlowColdStorageProxy {
     // funds inaccessible, the account should be made immutable after the
     // FlowColdStorageProxy.setup call by ensuring that no keys are registered
     // on the account itself.
-    pub resource Vault: FungibleToken.Receiver {
-        pub var lastNonce: Int64
+    access(all) resource Vault: FungibleToken.Receiver {
+        access(all) var lastNonce: Int64
         access(self) let flowVault: @FungibleToken.Vault
         access(self) let publicKey: [UInt8]
 
@@ -57,19 +57,19 @@ pub contract FlowColdStorageProxy {
         }
 
         // deposit proxies the call to the underlying FlowToken.Vault resource.
-        pub fun deposit(from: @FungibleToken.Vault) {
+        access(all) fun deposit(from: @FungibleToken.Vault) {
             emit Deposited(account: self.owner!.address, amount: from.balance)
             self.flowVault.deposit(from: <- from)
         }
 
         // getBalance returns the balance of the underlying FlowToken.Vault
         // resource.
-        pub fun getBalance(): UFix64 {
+        access(all) view fun getBalance(): UFix64 {
             return self.flowVault.balance
         }
 
         // getPublicKey returns the raw public key for the Vault.
-        pub fun getPublicKey(): [UInt8] {
+        access(all) view fun getPublicKey(): [UInt8] {
             return self.publicKey
         }
 
@@ -89,7 +89,7 @@ pub contract FlowColdStorageProxy {
         // "FLOW-V0.0-user" followed by a padding of null bytes.
         //
         // The resulting data is then hashed with SHA3-256 before being signed.
-        pub fun transfer(receiver: Address, amount: UFix64, nonce: Int64, sig: [UInt8]) {
+        access(all) fun transfer(receiver: Address, amount: UFix64, nonce: Int64, sig: [UInt8]) {
             // Ensure that the nonce follows on from the previous meta
             // transaction.
             if nonce != (self.lastNonce + 1) {
@@ -111,9 +111,7 @@ pub contract FlowColdStorageProxy {
             }
 
             // Do the actual transfer.
-            let acct = getAccount(receiver)
-                .getCapability(/public/flowTokenReceiver)
-                .borrow<&{FungibleToken.Receiver}>()
+            let acct = getAccount(receiver).capabilities.borrow<&{FungibleToken.Receiver}>(/public/flowTokenReceiver)
                 ?? panic("Unable to borrow a reference to the receiver's default token vault")
 
             let xfer <- self.flowVault.withdraw(amount: amount)
@@ -129,7 +127,6 @@ pub contract FlowColdStorageProxy {
                 panic("Cannot destroy a Vault without transferring the remaining balance")
             }
             destroy self.flowVault
-        }
     }
 
     // setup creates a new FlowColdStorageProxy.Vault with the given public key,
@@ -141,14 +138,16 @@ pub contract FlowColdStorageProxy {
     //
     // And, finally, the FlowColdStorageProxy.Vault itself is made directly
     // accessible via /public/flowColdStorageProxyVault.
-    pub fun setup(payer: AuthAccount, publicKey: [UInt8]): Address {
+    access(all) fun setup(payer: AuthAccount, publicKey: [UInt8]): Address {
         let acct = AuthAccount(payer: payer)
         acct.save(<- create Vault(publicKey: publicKey), to: self.VaultCapabilityStoragePath)
-        acct.unlink(/public/flowTokenReceiver)
-        acct.link<&{FungibleToken.Receiver}>(/public/defaultFlowTokenReceiver, target: /storage/flowTokenVault)!
-		acct.link<&{FungibleToken.Receiver}>(/public/flowTokenReceiver, target: self.VaultCapabilityStoragePath)!
-		acct.link<&Vault>(self.VaultCapabilityPublicPath, target: self.VaultCapabilityStoragePath)!
-        emit Created(account: acct.address, publicKey: String.encodeHex(publicKey))
+        acct.capabilities.unpublish(/public/flowTokenReceiver)
+        acct.capabilities.storage.issue<&{FungibleToken.Receiver}>(/public/defaultFlowTokenReceiver)
+                    acct.capabilities.publish(cap, at: /storage/flowTokenVault)
+        acct.capabilities.storage.issue<&{FungibleToken.Receiver}>(/public/flowTokenReceiver)
+                    acct.capabilities.publish(cap, at: self.VaultCapabilityStoragePath)
+        acct.capabilities.storage.issue<&{Vault}>(self.VaultCapabilityPublicPath)
+                    acct.capabilities.publish(cap, at: self.VaultCapabilityStoragePath)
         return acct.address
     }
 
