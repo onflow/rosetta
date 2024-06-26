@@ -388,9 +388,7 @@ func toSignatureSlice(v [][]byte) []crypto.Signature {
 
 func verifyBlockHash(spork *config.Spork, hash []byte, height uint64, hdr *entities.BlockHeader, block *entities.Block) bool {
 	chainID := flow.ChainID("flow-" + spork.Chain.Network)
-	if spork.Chain.Network == "canary" {
-		chainID = flow.ChainID("flow-benchnet")
-	} else if spork.Chain.Network == "emulator" {
+	if spork.Chain.Network == "emulator" {
 		chainID = flow.ChainID("flow-benchnet")
 	}
 
