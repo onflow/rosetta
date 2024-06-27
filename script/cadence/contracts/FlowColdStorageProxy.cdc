@@ -124,7 +124,6 @@ access(all) contract FlowColdStorageProxy {
         }
 
         // Called when a fungible token is burned via the `Burner.burn()` method
-        // replaces destroy() function
         access(contract) fun burnCallback() {
             if self.flowVault.balance > 0.0 {
                 panic("Cannot destroy a Vault without transferring the remaining balance")
