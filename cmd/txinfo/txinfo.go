@@ -17,10 +17,10 @@ import (
 )
 
 var networks = map[string]string{
-	"mainnet":  "access.mainnet.nodes.onflow.org:9000",
-	"testnet":  "access.devnet.nodes.onflow.org:9000",
-	"canary":   "access.canary.nodes.onflow.org:9000",
-	"localnet": "127.0.0.1:3569",
+	"mainnet":    "access.mainnet.nodes.onflow.org:9000",
+	"testnet":    "access.devnet.nodes.onflow.org:9000",
+	"previewnet": "access.previewnet.nodes.onflow.org:9000",
+	"localnet":   "127.0.0.1:3569",
 }
 
 func formatTransaction(txn *entities.Transaction) string {
@@ -72,7 +72,7 @@ func formatTransactionResult(res *flowaccess.TransactionResultResponse) string {
 
 func main() {
 	if len(os.Args) != 3 {
-		fmt.Println("Usage: txinfo mainnet|testnet|canary <txhash>")
+		fmt.Println("Usage: txinfo mainnet|testnet|previewnet <txhash>")
 		os.Exit(1)
 	}
 	addr, ok := networks[os.Args[1]]

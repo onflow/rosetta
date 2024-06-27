@@ -27,7 +27,7 @@ const (
 	Network_UNSPECIFIED_NETWORK Network = 0
 	Network_MAINNET             Network = 1
 	Network_TESTNET             Network = 2
-	Network_CANARY              Network = 3
+	Network_PREVIEWNET          Network = 3
 )
 
 // Enum value maps for Network.
@@ -36,13 +36,13 @@ var (
 		0: "UNSPECIFIED_NETWORK",
 		1: "MAINNET",
 		2: "TESTNET",
-		3: "CANARY",
+		3: "PREVIEWNET",
 	}
 	Network_value = map[string]int32{
 		"UNSPECIFIED_NETWORK": 0,
 		"MAINNET":             1,
 		"TESTNET":             2,
-		"CANARY":              3,
+		"PREVIEWNET":          3,
 	}
 )
 
@@ -536,15 +536,15 @@ func (x *IndexedTransaction) GetOperations() []*Operation {
 
 // Operation represents an individual operation within a transaction.
 //
-// * CREATE_ACCOUNT type operations have account specified, and if it happens to
-//   be an account created with a Proxy.Vault, then the proxy_public_key will
-//   also be specified.
+//   - CREATE_ACCOUNT type operations have account specified, and if it happens to
+//     be an account created with a Proxy.Vault, then the proxy_public_key will
+//     also be specified.
 //
 // * FEE type operations have sender account, amount, and receiver specified.
 //
-// * PROXY_TRANSFER and TRANSFER type operations have sender account, amount,
-//   and receiver specified. They might also include transfer_events if there
-//   are non-originator accounts involved in the transfer.
+//   - PROXY_TRANSFER and TRANSFER type operations have sender account, amount,
+//     and receiver specified. They might also include transfer_events if there
+//     are non-originator accounts involved in the transfer.
 type Operation struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache

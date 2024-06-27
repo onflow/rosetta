@@ -1,4 +1,4 @@
-pub fun main(addr: Address, keyIndex: Int): Bool {
+access(all) fun main(addr: Address, keyIndex: Int): Bool {
     let acct = getAccount(addr)
     let AccountKey = acct.keys.get(keyIndex: keyIndex)
     return AccountKey!.isRevoked
