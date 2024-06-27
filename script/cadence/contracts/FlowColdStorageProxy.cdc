@@ -1,5 +1,6 @@
-import FlowToken from 0x0ae53cb6e3f42a79
-import FungibleToken from 0xee82856bf20e2aa6
+import "FlowToken"
+import "FungibleToken"
+import "Burner"
 
 // FlowColdStorageProxy provides support for the transfer of FLOW tokens within
 // cold storage transactions.
@@ -40,7 +41,7 @@ access(all) contract FlowColdStorageProxy {
     // funds inaccessible, the account should be made immutable after the
     // FlowColdStorageProxy.setup call by ensuring that no keys are registered
     // on the account itself.
-    access(all) resource Vault: FungibleToken.Receiver {
+    access(all) resource Vault: FungibleToken.Receiver, Burner.Burnable {
         access(all) var lastNonce: Int64
         access(self) let flowVault: @FungibleToken.Vault
         access(self) let publicKey: [UInt8]
@@ -122,11 +123,13 @@ access(all) contract FlowColdStorageProxy {
             emit Transferred(from: self.owner!.address, to: receiver, amount: amount)
         }
 
-        destroy() {
+        // Called when a fungible token is burned via the `Burner.burn()` method
+        // replaces destroy() function
+        access(contract) fun burnCallback() {
             if self.flowVault.balance > 0.0 {
                 panic("Cannot destroy a Vault without transferring the remaining balance")
             }
-            destroy self.flowVault
+        }
     }
 
     // setup creates a new FlowColdStorageProxy.Vault with the given public key,
