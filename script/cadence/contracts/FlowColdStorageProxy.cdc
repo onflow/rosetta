@@ -14,6 +14,7 @@ import "Burner"
 // registered keys, this can also be used to enable a more "locked down" account
 // for doing sends/receives of FLOW tokens.
 access(all) contract FlowColdStorageProxy {
+    access(all) entitlement BorrowValue
 
     access(all) let VaultCapabilityPublicPath: PublicPath
     access(all) let VaultCapabilityStoragePath: StoragePath
@@ -140,7 +141,7 @@ access(all) contract FlowColdStorageProxy {
     //
     // And, finally, the FlowColdStorageProxy.Vault itself is made directly
     // accessible via /public/flowColdStorageProxyVault.
-    access(all) fun setup(payer: AuthAccount, publicKey: [UInt8]): Address {
+    access(all) fun setup(payer: auth(BorrowValue) &Account, publicKey: [UInt8]): Address {
         let acct = Account(payer: payer)
         acct.save(<- create Vault(publicKey: publicKey), to: self.VaultCapabilityStoragePath)
         acct.capabilities.unpublish(/public/flowTokenReceiver)
