@@ -140,7 +140,7 @@ access(all) contract FlowColdStorageProxy {
     //
     // And, finally, the FlowColdStorageProxy.Vault itself is made directly
     // accessible via /public/flowColdStorageProxyVault.
-    access(all) fun setup(payer: AuthAccount, publicKey: [UInt8]): Address {
+    access(all) fun setup(payer: auth(BorrowValue) &Account, publicKey: [UInt8]): Address {
         let acct = Account(payer: payer)
         acct.save(<- create Vault(publicKey: publicKey), to: self.VaultCapabilityStoragePath)
         acct.capabilities.unpublish(/public/flowTokenReceiver)
