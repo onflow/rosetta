@@ -1,7 +1,7 @@
 import FlowColdStorageProxy from 0xProxy
 
 transaction(sender: Address, receiver: Address, amount: UFix64, nonce: Int64, sig: String) {
-    prepare(payer: auth(BorrowValue)) {
+    prepare(payer: &Account) {
     }
     execute {
         // Get a reference to the sender's FlowColdStorageProxy.Vault.
