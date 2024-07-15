@@ -5,7 +5,7 @@ import "FungibleToken"
 transaction(sender: Address, receiver: Address, amount: UFix64) {
 
     // The Vault resource that holds the tokens that are being transferred.
-    let xfer: @FungibleToken.Vault
+    let xfer: @{FungibleToken.Vault}
 
     prepare(sender: auth(BorrowValue) &Account) {
         // Get a reference to the sender's FlowToken.Vault.
