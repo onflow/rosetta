@@ -7,7 +7,7 @@ transaction(sender: Address, receiver: Address, amount: UFix64) {
     // The Vault resource that holds the tokens that are being transferred.
     let xfer: @FungibleToken.Vault
 
-    prepare(sender: AuthAccount) {
+    prepare(sender: auth(BorrowValue) &Account) {
         // Get a reference to the sender's FlowToken.Vault.
         let vault = sender.storage.borrow<&FlowToken.Vault>(from: /storage/flowTokenVault)
             ?? panic("Could not borrow a reference to the sender's vault")
