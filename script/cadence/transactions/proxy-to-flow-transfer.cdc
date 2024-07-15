@@ -9,7 +9,7 @@ transaction(sender: Address, receiver: Address, amount: UFix64) {
 
     prepare(sender: auth(BorrowValue) &Account) {
         // Get a reference to the sender's FlowToken.Vault.
-        let vault = sender.storage.borrow<&FlowToken.Vault>(from: /storage/flowTokenVault)
+        let vault = sender.storage.borrow<auth(FungibleToken.Withdraw) &FlowToken.Vault>(from: /storage/flowTokenVault)
             ?? panic("Could not borrow a reference to the sender's vault")
 
         // Withdraw tokens from the sender's FlowToken.Vault.
