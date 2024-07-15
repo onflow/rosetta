@@ -19,7 +19,7 @@ transaction(sender: Address, receiver: Address, amount: UFix64) {
     execute {
         // Get a reference to the receiver's default FungibleToken.Receiver
         // for FLOW tokens.
-        let receiver = getAccount(receiver).capabilities.borrow<&{FungibleToken.Receiver}>()
+        let receiver = getAccount(receiver).capabilities.borrow<&{FungibleToken.Receiver}>(/public/flowTokenReceiver)
             ?? panic("Could not borrow a reference to the receiver's vault")
 
         // Deposit the withdrawn tokens in the receiver's vault.
