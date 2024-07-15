@@ -72,7 +72,7 @@ func formatTransactionResult(res *flowaccess.TransactionResultResponse) string {
 
 func main() {
 	if len(os.Args) != 3 {
-		fmt.Println("Usage: txinfo mainnet|testnet|canary <txhash>")
+		fmt.Println("Usage: txinfo mainnet|testnet|previewnet <txhash>")
 		os.Exit(1)
 	}
 	addr, ok := networks[os.Args[1]]
