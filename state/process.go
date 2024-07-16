@@ -432,7 +432,7 @@ outer:
 							skipCache = true
 							continue outer
 						}
-						fields := event.GetFields()
+						fields := event.FieldsMappedByName()
 						if len(fields) != 1 {
 							log.Errorf(
 								"Found flow.AccountCreated event with %d fields in transaction %x in block %x at height %d",
@@ -473,7 +473,7 @@ outer:
 							skipCache = true
 							continue outer
 						}
-						fields := event.GetFields()
+						fields := event.FieldsMappedByName()
 						// NOTE(tav): We only care about new proxy accounts if
 						// they are created by one of our tracked accounts.
 						if !i.isTracked(payer, newAccounts) {
@@ -562,7 +562,7 @@ outer:
 							skipCache = true
 							continue outer
 						}
-						fields := event.GetFields()
+						fields := event.FieldsMappedByName()
 						if len(fields) != 2 {
 							log.Errorf(
 								"Found FlowColdStorageProxy.Deposited event with %d fields in transaction %x in block %x at height %d",
@@ -619,7 +619,7 @@ outer:
 							skipCache = true
 							continue outer
 						}
-						fields := event.GetFields()
+						fields := event.FieldsMappedByName()
 						if len(fields) != 3 {
 							log.Errorf(
 								"Found FlowColdStorageProxy.Transferred event with %d fields in transaction %x in block %x at height %d",
@@ -709,7 +709,7 @@ outer:
 							skipCache = true
 							continue outer
 						}
-						fields := event.GetFields()
+						fields := event.FieldsMappedByName()
 						if len(fields) != 2 {
 							log.Errorf(
 								"Found FlowToken.TokensDeposited event with %d fields in transaction %x in block %x at height %d",
@@ -786,7 +786,7 @@ outer:
 							skipCache = true
 							continue outer
 						}
-						fields := event.GetFields()
+						fields := event.FieldsMappedByName()
 						if len(fields) != 2 {
 							log.Errorf(
 								"Found FlowToken.TokensWithdrawn event with %d fields in transaction %x in block %x at height %d",
