@@ -14,6 +14,7 @@ import (
 //
 // Adapted from:
 // https://github.com/onflow/flow-core-contracts/blob/master/transactions/flowToken/transfer_tokens.cdc
+// Confirmed in use: https://www.flowdiver.io/tx/5316f7b228370d2571a3f2ec5b060a142d3261d8e05b80010c204915843d69e7?tab=script
 const BasicTransfer = `import FlowToken from 0x{{.Contracts.FlowToken}}
 import FungibleToken from 0x{{.Contracts.FungibleToken}}
 
@@ -53,6 +54,7 @@ access(all) fun main(inclusionEffort: UFix64, executionEffort: UFix64): UFix64 {
 `
 
 // CreateAccount defines the template for creating new Flow accounts.
+// Confirmed in use: https://www.flowdiver.io/tx/ff0a8d816fe4f73edee665454f26b5fc06f5a39758cb90c313a9c3372f45f6c7?tab=script
 const CreateAccount = `transaction(publicKeys: [String]) {
     prepare(payer: auth(AddKey, BorrowValue) &Account) {
         for key in publicKeys {
