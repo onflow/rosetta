@@ -77,7 +77,7 @@ const CreateAccount = `transaction(publicKeys: [String]) {
 const CreateProxyAccount = `import FlowColdStorageProxy from 0x{{.Contracts.FlowColdStorageProxy}}
 
 transaction(publicKey: String) {
-    prepare(payer: AuthAccount) {
+    prepare(payer: auth(BorrowValue) &Account) {
         // Create a new account with a FlowColdStorageProxy Vault.
         FlowColdStorageProxy.setup(payer: payer, publicKey: publicKey.decodeHex())
     }
@@ -107,10 +107,11 @@ access(all) struct AccountBalances {
 
 access(all) fun main(addr: Address): AccountBalances {
     let acct = getAccount(addr)
-    let balanceRef = acct.capabilities.borrow<&{FungibleToken.Balance}>(/public/flowTokenBalance)!
+    let balanceRef = acct.getCapability(/public/flowTokenBalance)
+                         .borrow<&FlowToken.Vault{FungibleToken.Balance}>()!
     var is_proxy = false
     var proxy_balance = 0.0
-    let ref = acct.capabilities.borrow<&{FlowColdStorageProxy.Vault}>(FlowColdStorageProxy.VaultCapabilityPublicPath)
+    let ref = acct.getCapability(FlowColdStorageProxy.VaultCapabilityPublicPath).borrow<&FlowColdStorageProxy.Vault>()
     if let vault = ref {
         is_proxy = true
         proxy_balance = vault.getBalance()
@@ -141,10 +142,13 @@ access(all) struct AccountBalances {
 }
 
 access(all) fun main(addr: Address): AccountBalances {
-    let acct = getAccount(addr)
-    let balanceRef = acct.capabilities.borrow<&{FungibleToken.Balance}>(/public/flowTokenBalance)!
+	let acct = getAccount(addr)
+    var balance = 0.0
+    if let balanceRef = acct.capabilities.borrow<&{FungibleToken.Balance}>(/public/flowTokenBalance) {
+        balance = balanceRef.balance
+    }
     return AccountBalances(
-        default_balance: balanceRef.balance,
+        default_balance: balance,
         is_proxy: false,
         proxy_balance: 0.0
     )
@@ -191,7 +195,7 @@ pub fun main(addr: Address): String {
 const ProxyTransfer = `import FlowColdStorageProxy from 0x{{.Contracts.FlowColdStorageProxy}}
 
 transaction(sender: Address, receiver: Address, amount: UFix64, nonce: Int64, sig: String) {
-    prepare(payer: AuthAccount) {
+	prepare(payer: auth(BorrowValue) &Account) {
     }
     execute {
         // Get a reference to the sender's FlowColdStorageProxy.Vault.
@@ -207,7 +211,7 @@ transaction(sender: Address, receiver: Address, amount: UFix64, nonce: Int64, si
 // SetContract deploys/updates a contract on an account, while also updating the
 // account's signing key.
 const SetContract = `transaction(update: Bool, contractName: String, contractCode: String, prevKeyIndex: Int, newKey: String, keyMessage: String, keySignature: String, keyMetadata: String) {
-    prepare(payer: AuthAccount) {
+    prepare(payer: auth(AddKey) AuthAccount) {
         let key = PublicKey(
             publicKey: newKey.decodeHex(),
             signatureAlgorithm: SignatureAlgorithm.ECDSA_secp256k1
