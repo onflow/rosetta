@@ -159,7 +159,7 @@ access(all) contract FlowColdStorageProxy {
         let ftReceiverCap = acct.capabilities.storage.issue<&{FungibleToken.Receiver}>(self.VaultCapabilityStoragePath)
         acct.capabilities.publish(ftReceiverCap, at: /public/flowTokenReceiver)
 
-        let vaultReceiverCap = acct.capabilities.storage.issue<&{Vault}>(self.VaultCapabilityStoragePath)
+        let vaultReceiverCap = acct.capabilities.storage.issue<&Vault>(self.VaultCapabilityStoragePath)
         acct.capabilities.publish(vaultReceiverCap, at: self.VaultCapabilityPublicPath)
 
         emit Created(account: acct.address, publicKey: String.encodeHex(publicKey))
