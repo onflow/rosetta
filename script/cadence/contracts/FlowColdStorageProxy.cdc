@@ -1,6 +1,6 @@
-import "FlowToken"
-import "FungibleToken"
-import "Burner"
+import FlowToken from 0x0ae53cb6e3f42a79
+import FungibleToken from 0xee82856bf20e2aa6
+import Burner from 0xf8d6e0586b0a20c7
 
 // FlowColdStorageProxy provides support for the transfer of FLOW tokens within
 // cold storage transactions.
@@ -43,7 +43,7 @@ access(all) contract FlowColdStorageProxy {
     // on the account itself.
     access(all) resource Vault: FungibleToken.Receiver, Burner.Burnable {
         access(all) var lastNonce: Int64
-        access(self) let flowVault: @FungibleToken.Vault
+        access(self) let flowVault: @{FungibleToken.Vault}
         access(self) let publicKey: [UInt8]
 
         init(publicKey: [UInt8]) {
@@ -58,7 +58,7 @@ access(all) contract FlowColdStorageProxy {
         }
 
         // deposit proxies the call to the underlying FlowToken.Vault resource.
-        access(all) fun deposit(from: @FungibleToken.Vault) {
+        access(all) fun deposit(from: @{FungibleToken.Vault}) {
             emit Deposited(account: self.owner!.address, amount: from.balance)
             self.flowVault.deposit(from: <- from)
         }
@@ -72,6 +72,14 @@ access(all) contract FlowColdStorageProxy {
         // getPublicKey returns the raw public key for the Vault.
         access(all) view fun getPublicKey(): [UInt8] {
             return self.publicKey
+        }
+
+        access(all) view fun getSupportedVaultTypes(): {Type: Bool} {
+            return {self.flowVault.getType(): true}
+        }
+
+        access(all) view fun isSupportedVaultType(type: Type): Bool {
+            return self.getSupportedVaultTypes()[type] ?? false
         }
 
         // LEAVE THIS COMMENT AS IS. IT IS USED BY THE AUTOMATED TESTS.
@@ -143,13 +151,18 @@ access(all) contract FlowColdStorageProxy {
     access(all) fun setup(payer: auth(BorrowValue) &Account, publicKey: [UInt8]): Address {
         let acct = Account(payer: payer)
         acct.save(<- create Vault(publicKey: publicKey), to: self.VaultCapabilityStoragePath)
+
         acct.capabilities.unpublish(/public/flowTokenReceiver)
-        acct.capabilities.storage.issue<&{FungibleToken.Receiver}>(/public/defaultFlowTokenReceiver)
-                    acct.capabilities.publish(cap, at: /storage/flowTokenVault)
-        acct.capabilities.storage.issue<&{FungibleToken.Receiver}>(/public/flowTokenReceiver)
-                    acct.capabilities.publish(cap, at: self.VaultCapabilityStoragePath)
-        acct.capabilities.storage.issue<&{Vault}>(self.VaultCapabilityPublicPath)
-                    acct.capabilities.publish(cap, at: self.VaultCapabilityStoragePath)
+        let localVaultCap = acct.capabilities.storage.issue<&{FungibleToken.Receiver}>(/storage/flowTokenVault)
+        acct.capabilities.publish(localVaultCap, at: /public/defaultFlowTokenReceiver)
+
+        let ftReceiverCap = acct.capabilities.storage.issue<&{FungibleToken.Receiver}>(self.VaultCapabilityStoragePath)
+        acct.capabilities.publish(ftReceiverCap, at: /public/flowTokenReceiver)
+
+        let vaultReceiverCap = acct.capabilities.storage.issue<&{Vault}>(self.VaultCapabilityStoragePath)
+        acct.capabilities.publish(vaultReceiverCap, at: self.VaultCapabilityPublicPath)
+
+        emit Created(account: acct.address, publicKey: String.encodeHex(publicKey))
         return acct.address
     }
 
