@@ -47,7 +47,7 @@ access(all) contract FlowColdStorageProxy {
         access(self) let publicKey: [UInt8]
 
         init(publicKey: [UInt8]) {
-            self.flowVault <- FlowToken.createEmptyVault()
+            self.flowVault <- FlowToken.createEmptyVault(vaultType: Type<@FlowToken.Vault>())
             self.lastNonce = -1
             self.publicKey = publicKey
             // NOTE(tav): We instantiate a PublicKey to make sure it is valid.
@@ -150,7 +150,7 @@ access(all) contract FlowColdStorageProxy {
     // accessible via /public/flowColdStorageProxyVault.
     access(all) fun setup(payer: auth(BorrowValue) &Account, publicKey: [UInt8]): Address {
         let acct = Account(payer: payer)
-        acct.save(<- create Vault(publicKey: publicKey), to: self.VaultCapabilityStoragePath)
+        acct.storage.save(<- create Vault(publicKey: publicKey), to: self.VaultCapabilityStoragePath)
 
         acct.capabilities.unpublish(/public/flowTokenReceiver)
         let localVaultCap = acct.capabilities.storage.issue<&{FungibleToken.Receiver}>(/storage/flowTokenVault)
