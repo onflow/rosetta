@@ -2,20 +2,17 @@
 
 all: build
 
-relic:
-	./environ/build-relic.py
-
 go-build:
-	go build -tags relic -o server cmd/server/server.go
+	go build -o server cmd/server/server.go
 
-build: relic go-build
+build: go-build
 
 deps:
 	go mod download -x
 
 lint:
 	@go mod tidy
-	@staticcheck -tags relic ./...
+	@staticcheck ./...
 
 proto:
 	@echo ">> Generating model/model.pb.go"
@@ -30,3 +27,6 @@ integration-test-cleanup:
 
 integration-test:
 	python3 integration_test.py
+
+previewnet-integration-test:
+	python3 previewnet_integration_test.py

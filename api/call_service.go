@@ -132,7 +132,7 @@ func (s *Server) accountPublicKeys(ctx context.Context, params map[string]interf
 		if err != nil {
 			return nil, handleExecutionErr(err, "execute get_proxy_public_key")
 		}
-		rawKey, ok := resp.ToGoValue().(string)
+		rawKey, ok := resp.(cadence.String)
 		if !ok {
 			return nil, wrapErrorf(
 				errInternal, "failed to convert get_proxy_public_key result to string",
@@ -146,7 +146,7 @@ func (s *Server) accountPublicKeys(ctx context.Context, params map[string]interf
 					len(keys),
 				)
 			}
-			pub, err := hex.DecodeString(rawKey)
+			pub, err := hex.DecodeString(string(rawKey))
 			if err != nil {
 				return nil, wrapErrorf(
 					errInternal,
@@ -246,14 +246,15 @@ func (s *Server) getOnchainData(ctx context.Context, addr []byte, block []byte) 
 	if err != nil {
 		return nil, handleExecutionErr(err, "execute "+scriptName)
 	}
-	fields, ok := resp.ToGoValue().([]interface{})
+	structValue, ok := resp.(cadence.Struct)
 	if !ok {
 		return nil, wrapErrorf(
 			errInternal,
-			"failed to convert %s result to Go slice",
+			"failed to convert %s result to array",
 			scriptName,
 		)
 	}
+	fields := cadence.FieldsMappedByName(structValue)
 	if len(fields) != 3 {
 		return nil, wrapErrorf(
 			errInternal,
@@ -262,30 +263,33 @@ func (s *Server) getOnchainData(ctx context.Context, addr []byte, block []byte) 
 		)
 	}
 	onchain := &onchainData{}
-	onchain.DefaultBalance, ok = fields[0].(uint64)
+	defaultBalance, ok := fields["default_balance"].(cadence.UFix64)
 	if !ok {
 		return nil, wrapErrorf(
 			errInternal,
 			"expected first field of the %s result to be uint64: got %T",
-			scriptName, fields[0],
+			scriptName, fields["default_balance"],
 		)
 	}
-	onchain.IsProxy, ok = fields[1].(bool)
+	onchain.DefaultBalance = uint64(defaultBalance)
+	isProxy, ok := fields["is_proxy"].(cadence.Bool)
 	if !ok {
 		return nil, wrapErrorf(
 			errInternal,
 			"expected second field of the %s result to be bool: got %T",
-			scriptName, fields[1],
+			scriptName, fields["is_proxy"],
 		)
 	}
-	onchain.ProxyBalance, ok = fields[2].(uint64)
+	onchain.IsProxy = bool(isProxy)
+	proxyBalance, ok := fields["proxy_balance"].(cadence.UFix64)
 	if !ok {
 		return nil, wrapErrorf(
 			errInternal,
 			"expected third field of the %s result to be uint64: got %T",
-			scriptName, fields[2],
+			scriptName, fields["proxy_balance"],
 		)
 	}
+	onchain.ProxyBalance = uint64(proxyBalance)
 	return onchain, nil
 }
 

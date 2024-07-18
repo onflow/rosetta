@@ -189,6 +189,7 @@ func (c *chainConfig) readConfigJSON(filename string) {
 	if err != nil {
 		log.Fatalf("Failed to decode config file at %q: %s", filename, err)
 	}
+	log.Debugf("Reading config: " + filename)
 	c.filename = filename
 }
 
@@ -207,7 +208,7 @@ func (c *chainConfig) parseAndValidateNetwork(result *Chain) {
 	if c.Network == "" {
 		log.Fatalf("Missing .network value in %s", c.filename)
 	}
-	if !(c.Network == "mainnet" || c.Network == "testnet" || c.Network == "canary" || c.Network == "localnet" || c.Network == "emulator") {
+	if !(c.Network == "mainnet" || c.Network == "testnet" || c.Network == "previewnet" || c.Network == "localnet" || c.Network == "emulator") {
 		log.Fatalf(
 			"Invalid config value for .network in %s: %q",
 			c.filename, c.Network,
@@ -384,6 +385,8 @@ func (c *chainConfig) parseAndValidateSporks(ctx context.Context, result *Chain)
 				c.Network, id, c.filename,
 			)
 		}
+		log.Debugf("Access Nodes Config: %c", cfg.AccessNodes)
+
 		spork := &Spork{
 			Chain:     result,
 			Consensus: cfg.Consensus,
@@ -392,7 +395,8 @@ func (c *chainConfig) parseAndValidateSporks(ctx context.Context, result *Chain)
 			RootBlock: cfg.RootBlock,
 			Version:   cfg.Version,
 		}
-		if spork.Version < 1 || spork.Version > 6 {
+
+		if spork.Version < 1 || spork.Version > 7 {
 			log.Fatalf(
 				"Invalid .version value for %s-%d in %s",
 				c.Network, id, c.filename,
