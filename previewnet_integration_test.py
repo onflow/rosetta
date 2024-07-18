@@ -409,11 +409,11 @@ def main():
     if init_setup == 'y':
         init_flow_json()
         create_originator()
-    #create_account()
-    #setup_rosetta()
+    create_account()
+    setup_rosetta()
 
     _, _, _, root_address = get_account_keys("originator")
-    #rosetta_create_account(address, "originator", 0)
+    rosetta_create_account(root_address, "originator", 0)
     _, _, _, new_address = get_account_keys("create_account")
     # TODO: uncomment when FlowColdStorageProxy.cdc updated to Cadence 1.0
     # rosetta_create_proxy_account(address, "originator", 0)
