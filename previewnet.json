@@ -6,15 +6,17 @@
         }
     ],
     "contracts": {
-        "flow_cold_storage_proxy": "0000000000000000",
+        "flow_cold_storage_proxy": "2e82cce12c26f9de",
         "flow_fees": "ab086ce9cc29fc80",
         "flow_token": "4445e7ad11568276",
-        "fungible_token": "a0225e7000ac82a9"
+        "fungible_token": "a0225e7000ac82a9",
+        "burner": "a0225e7000ac82a9"
     },
     "data_dir": "./data",
     "disable_consensus_follower": true,
     "network": "previewnet",
     "originators": [
+        "2e82cce12c26f9de"
     ],
     "port": 8080,
     "spork_seal_tolerance": 10000,
