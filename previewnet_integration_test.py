@@ -57,20 +57,19 @@ def create_originator():
     except IOError as e:
         print(f"Error opening or writing to file: {e}")
 
-    # TODO: uncomment when FlowColdStorageProxy.cdc updated to Cadence 1.0
-    # deploy_contracts("originator")
-    # truncated_flow_address = flow_address[2:]
-    # with open(config_file_name, "r+") as json_file:
-    #     data = json.load(json_file)
-    #     data["originators"] = [truncated_flow_address]
-    #     data["contracts"]["flow_cold_storage_proxy"] = truncated_flow_address
-    #     json_file.seek(0)
-    #     json.dump(data, json_file, indent=4)
-    #     json_file.truncate()
+    deploy_contracts("originator")
+    truncated_flow_address = flow_address[2:]
+    with open(config_file_name, "r+") as json_file:
+        data = json.load(json_file)
+        data["originators"] = [truncated_flow_address]
+        data["contracts"]["flow_cold_storage_proxy"] = truncated_flow_address
+        json_file.seek(0)
+        json.dump(data, json_file, indent=4)
+        json_file.truncate()
 
 def create_account():
     flow_key, rosetta_key, private_key = gen_account()
-    print("The originator's flow public key is: " + flow_key)
+    print("The flow-account's flow public key is: " + flow_key)
     flow_address = input("What is the flow address generated from https://previewnet-faucet.onflow.org/ using ECDSA_secp256k1 (Include the 0x prefix)\n")
     with open('account-keys.csv', "a+") as file_object:
         file_object.write("flow-account," + flow_key + "," + rosetta_key + "," + private_key + "," + flow_address + "\n")
@@ -80,8 +79,9 @@ def deploy_contracts(account_name):
     contract_path = "./script/cadence/contracts/FlowColdStorageProxy.cdc"
     print("FlowToken from 0x4445e7ad11568276")
     print("FungibleToken from 0xa0225e7000ac82a9")
+    print("Burner from 0xcf706c70db9dab9b")
     _ = input("Modify the FlowColdStorageProxy contract at " + contract_path + " to use the correct contract addresses for previewnet.")
-    deploy_contract_cmd = f"flow accounts add-contract --signer {account_name} {contract_path}"
+    deploy_contract_cmd = f"flow-c1 accounts add-contract --signer {account_name} {contract_path}"
     cmds = deploy_contract_cmd.split(" ") + network_flag
     result = subprocess.run(cmds, stdout=subprocess.PIPE)
     print(result.stdout.decode('utf-8'))
@@ -189,45 +189,44 @@ def rosetta_create_proxy_account(root_originator, root_originator_name="originat
 
 def rosetta_transfer(originator, destination, amount, i=0):
     transaction = "transfer"
-    operations = [
-        {
-            "type": transaction,
-            "operation_identifier": {
-                "index": i
-            },
-            "account": {
-                "address": originator
-            },
-            "amount": {
-                "currency": {
-                    "decimals": 8,
-                    "symbol": "FLOW"
-                },
-                "value": str(-1 * amount * 10 ** 7)
-            }
+    operations = [{
+        "type": transaction,
+        "operation_identifier": {
+            "index": i
         },
-        {
-            "type": transaction,
-            "operation_identifier": {
-                "index": i + 1
+        "account": {
+            "address": originator
+        },
+        "amount": {
+            "currency": {
+                "decimals": 8,
+                "symbol": "FLOW"
             },
-            "related_operations": [
-                {
-                    "index": i
-                }
-            ],
-            "account": {
-                "address": destination
-            },
-            "amount": {
-                "currency": {
-                    "decimals": 8,
-                    "symbol": "FLOW"
-                },
-                "value": str(amount * 10 ** 7)
-            }
+            "value": str(-1 * amount * 10 ** 7)
         }
-    ]
+    },
+    {
+        "type": transaction,
+        "operation_identifier": {
+            "index": i + 1
+        },
+        "related_operations": [
+            {
+                "index": i
+            }
+        ],
+        "account": {
+            "address": destination
+        },
+        "amount": {
+            "currency": {
+                "decimals": 8,
+                "symbol": "FLOW"
+            },
+            "value": str(amount * 10 ** 7)
+        }
+    }]
+
     preprocess_response = preprocess_transaction(originator, operations)
     metadata_response = metadata_transaction(preprocess_response["options"])
     payloads_response = payloads_transaction(operations, metadata_response["metadata"]["protobuf"])
@@ -410,18 +409,21 @@ def main():
     if init_setup == 'y':
         init_flow_json()
         create_originator()
-    create_account()
-    setup_rosetta()
+    #create_account()
+    #setup_rosetta()
 
-    _, _, _, address = get_account_keys("originator")
-    rosetta_create_account(address, "originator", 0)
+    _, _, _, root_address = get_account_keys("originator")
+    #rosetta_create_account(address, "originator", 0)
     _, _, _, new_address = get_account_keys("create_account")
     # TODO: uncomment when FlowColdStorageProxy.cdc updated to Cadence 1.0
     # rosetta_create_proxy_account(address, "originator", 0)
     # _, _, _, new_proxy_address = get_account_keys("create_proxy_account")
 
-    _, _, _, new_address = get_account_keys("create_account")
-    rosetta_transfer(address, new_address, 50)
+    _, _, _, flow_account = get_account_keys("flow-account")
+
+    print(f"addresses ", root_address, new_address, flow_account)
+
+    rosetta_transfer(root_address, new_address, 50)
     # TODO: uncomment when FlowColdStorageProxy.cdc updated to Cadence 1.0
     # time.sleep(30) ## Hacky fix to not check nonce
     # rosetta_transfer(address, new_proxy_address, 50)
