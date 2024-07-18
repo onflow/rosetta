@@ -189,6 +189,7 @@ func (c *chainConfig) readConfigJSON(filename string) {
 	if err != nil {
 		log.Fatalf("Failed to decode config file at %q: %s", filename, err)
 	}
+	log.Debugf("Reading config: " + filename)
 	c.filename = filename
 }
 
@@ -384,6 +385,8 @@ func (c *chainConfig) parseAndValidateSporks(ctx context.Context, result *Chain)
 				c.Network, id, c.filename,
 			)
 		}
+		log.Debugf("Access Nodes Config: %c", cfg.AccessNodes)
+
 		spork := &Spork{
 			Chain:     result,
 			Consensus: cfg.Consensus,
@@ -392,6 +395,7 @@ func (c *chainConfig) parseAndValidateSporks(ctx context.Context, result *Chain)
 			RootBlock: cfg.RootBlock,
 			Version:   cfg.Version,
 		}
+
 		if spork.Version < 1 || spork.Version > 7 {
 			log.Fatalf(
 				"Invalid .version value for %s-%d in %s",
