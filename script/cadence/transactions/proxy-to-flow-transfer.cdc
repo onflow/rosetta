@@ -1,6 +1,6 @@
 import FlowColdStorageProxy from 0xProxy
-import "FlowToken"
-import "FungibleToken"
+import FlowToken from 0x0ae53cb6e3f42a79
+import FungibleToken from 0xee82856bf20e2aa6
 
 transaction(sender: Address, receiver: Address, amount: UFix64) {
 
