@@ -6,17 +6,17 @@
         }
     ],
     "contracts": {
-        "flow_cold_storage_proxy": "2e82cce12c26f9de",
+        "flow_cold_storage_proxy": "cf706c70db9dab9b",
         "flow_fees": "ab086ce9cc29fc80",
         "flow_token": "4445e7ad11568276",
         "fungible_token": "a0225e7000ac82a9",
-        "burner": "a0225e7000ac82a9"
+        "burner": "b6763b4399a888c8"
     },
     "data_dir": "./data",
     "disable_consensus_follower": true,
     "network": "previewnet",
     "originators": [
-        "2e82cce12c26f9de"
+        "cf706c70db9dab9b"
     ],
     "port": 8080,
     "spork_seal_tolerance": 10000,
