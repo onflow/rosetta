@@ -89,6 +89,7 @@ func (c Client) Account(ctx context.Context, addr []byte) (*entities.Account, er
 		trace.EndSpanErr(span, err)
 		return nil, err
 	}
+	log.Debugf("AccessAPI.Account(%a): %r", addr, resp.Account)
 	trace.EndSpanOk(span)
 	return resp.Account, nil
 }
@@ -115,6 +116,7 @@ func (c Client) AccountAtHeight(ctx context.Context, addr []byte, height uint64)
 		trace.EndSpanErr(span, err)
 		return nil, err
 	}
+	log.Debugf("AccessAPI.AccountAtHeight(%a): %r", addr, resp.Account)
 	trace.EndSpanOk(span)
 	return resp.Account, nil
 }
@@ -135,6 +137,7 @@ func (c Client) BlockByHeight(ctx context.Context, height uint64) (*entities.Blo
 		trace.EndSpanErr(span, err)
 		return nil, err
 	}
+	log.Debugf("AccessAPI.BlockByHeight(%a): %b", height, resp.Block)
 	trace.EndSpanOk(span)
 	return resp.Block, nil
 }
@@ -155,6 +158,7 @@ func (c Client) BlockByID(ctx context.Context, blockID []byte) (*entities.Block,
 		trace.EndSpanErr(span, err)
 		return nil, err
 	}
+	log.Debugf("AccessAPI.BlockByID(%a): %b", blockID, resp.Block)
 	trace.EndSpanOk(span)
 	return resp.Block, nil
 }
@@ -181,7 +185,9 @@ func (c Client) BlockEvents(ctx context.Context, blockID []byte, typ string) ([]
 		trace.EndSpanErr(span, err)
 		return nil, err
 	}
+	log.Debugf("AccessAPI.BlockEvents(): %a\n%b", blockID, resp.Results)
 	trace.EndSpanOk(span)
+
 	return resp.Results[0].Events, nil
 }
 
@@ -200,6 +206,7 @@ func (c Client) BlockHeaderByHeight(ctx context.Context, height uint64) (*entiti
 		trace.EndSpanErr(span, err)
 		return nil, err
 	}
+	log.Debugf("AccessAPI.BlockHeaderByHeight(%a): %b", height, resp.Block)
 	trace.EndSpanOk(span)
 	return resp.Block, nil
 }
@@ -219,6 +226,7 @@ func (c Client) BlockHeaderByID(ctx context.Context, blockID []byte) (*entities.
 		trace.EndSpanErr(span, err)
 		return nil, err
 	}
+	log.Debugf("AccessAPI.BlockHeaderByID(%a): %b", blockID, resp.Block)
 	trace.EndSpanOk(span)
 	return resp.Block, nil
 }
@@ -239,6 +247,7 @@ func (c Client) CollectionByID(ctx context.Context, id []byte) (*entities.Collec
 		trace.EndSpanErr(span, err)
 		return nil, err
 	}
+	log.Debugf("AccessAPI.CollectionByID(%a): %b", id, resp.Collection)
 	trace.EndSpanOk(span)
 	return resp.Collection, nil
 }
@@ -282,6 +291,7 @@ func (c Client) Execute(ctx context.Context, blockID []byte, script []byte, args
 		trace.EndSpanErr(span, err)
 		return nil, err
 	}
+	log.Debugf("AccessAPI.Execute(): %a = %b", blockID, val)
 	trace.EndSpanOk(span)
 	return val, nil
 }
@@ -301,6 +311,7 @@ func (c Client) ExecutionResultForBlockID(ctx context.Context, blockID []byte) (
 		trace.EndSpanErr(span, err)
 		return nil, err
 	}
+	log.Debugf("AccessAPI.ExecutionResultForBlockID(): %a", resp.ExecutionResult)
 	trace.EndSpanOk(span)
 	return resp.ExecutionResult, nil
 }
@@ -321,6 +332,8 @@ func (c Client) LatestBlockHeader(ctx context.Context) (*entities.BlockHeader, e
 		trace.EndSpanErr(span, err)
 		return nil, err
 	}
+
+	log.Debugf("AccessAPI.LatestBlockHeader(): %b", resp.Block)
 	trace.EndSpanOk(span)
 	return resp.Block, nil
 }
@@ -341,6 +354,7 @@ func (c Client) LatestFinalizedBlockHeader(ctx context.Context) (*entities.Block
 		trace.EndSpanErr(span, err)
 		return nil, err
 	}
+	log.Debugf("AccessAPI.LatestFinalizedBlockHeader(): %b", resp.Block)
 	trace.EndSpanOk(span)
 	return resp.Block, nil
 }
@@ -372,6 +386,7 @@ func (c *Client) SendTransaction(ctx context.Context, txn *entities.Transaction)
 		trace.EndSpanErr(span, err)
 		return nil, err
 	}
+	log.Debugf("AccessAPI.SendTransaction(): %t, %b", txn, resp.Id)
 	trace.EndSpanOk(span)
 	return resp.Id, nil
 }
@@ -397,6 +412,7 @@ func (c Client) Transaction(ctx context.Context, hash []byte) (*entities.Transac
 		trace.EndSpanErr(span, err)
 		return nil, err
 	}
+	log.Debugf("AccessAPI.Transaction(%a): %b", hash, resp.Transaction)
 	trace.EndSpanOk(span)
 	return resp.Transaction, nil
 }
@@ -420,6 +436,7 @@ func (c Client) TransactionResult(ctx context.Context, blockID []byte, txnIndex 
 		return nil, err
 	}
 	trace.EndSpanOk(span)
+	log.Debugf("AccessAPI.TransactionResult(%i): %r", blockID, resp)
 	return resp, nil
 }
 
@@ -447,6 +464,7 @@ func (c Client) TransactionResultByHash(ctx context.Context, hash []byte) (*acce
 		return nil, err
 	}
 	trace.EndSpanOk(span)
+	log.Debugf("AccessAPI.TransactionResultByHash(): %a", hash)
 	return resp, nil
 }
 
@@ -468,6 +486,7 @@ func (c Client) TransactionResultsByBlockID(ctx context.Context, blockID []byte)
 		return nil, err
 	}
 	trace.EndSpanOk(span)
+	log.Debugf("AccessAPI.TransactionResultsByBlockID(): %a", blockID)
 	return resp.TransactionResults, nil
 }
 
@@ -490,6 +509,7 @@ func (c Client) TransactionsByBlockID(ctx context.Context, blockID []byte) ([]*e
 		return nil, err
 	}
 	trace.EndSpanOk(span)
+	log.Debugf("AccessAPI.TransactionsByBlockID(): %a", blockID)
 	return resp.Transactions, nil
 }
 
