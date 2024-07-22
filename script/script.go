@@ -91,8 +91,7 @@ transaction(publicKey: String) {
 //
 // The returned balances include the value of the account's default FLOW vault,
 // as well as the optional FlowColdStorageProxy vault.
-const GetBalances = `import FlowColdStorageProxy from 0x{{.Contracts.FlowColdStorageProxy}}
-import FlowToken from 0x{{.Contracts.FlowToken}}
+const GetBalances = `import FlowToken from 0x{{.Contracts.FlowToken}}
 import FungibleToken from 0x{{.Contracts.FungibleToken}}
 
 access(all) struct AccountBalances {
@@ -109,7 +108,7 @@ access(all) struct AccountBalances {
 
 access(all) fun main(addr: Address): AccountBalances {
     let acct = getAccount(addr)
-    let balanceRef = acct.capabilities.borrow<&FlowToken.Vault>(/public/flowTokenBalance)
+    let balanceRef = acct.capabilities.borrow<&FlowToken.Vault>(/public/flowTokenBalance)!
     var is_proxy = false
     var proxy_balance = 0.0
     let ref = acct.capabilities.borrow<&{FlowColdStorageProxy.Vault}>(FlowColdStorageProxy.VaultCapabilityPublicPath)
