@@ -109,11 +109,10 @@ access(all) struct AccountBalances {
 
 access(all) fun main(addr: Address): AccountBalances {
     let acct = getAccount(addr)
-    let balanceRef = acct.getCapability(/public/flowTokenBalance)
-                         .borrow<&FlowToken.Vault{FungibleToken.Balance}>()!
+    let balanceRef = acct.capabilities.borrow<&FlowToken.Vault}>(/public/flowTokenBalance)
     var is_proxy = false
     var proxy_balance = 0.0
-    let ref = acct.getCapability(FlowColdStorageProxy.VaultCapabilityPublicPath).borrow<&FlowColdStorageProxy.Vault>()
+    let ref = acct.capabilities.borrow<&{FlowColdStorageProxy.Vault}>(FlowColdStorageProxy.VaultCapabilityPublicPath)
     if let vault = ref {
         is_proxy = true
         proxy_balance = vault.getBalance()
