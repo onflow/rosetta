@@ -3,9 +3,9 @@ import FlowToken from 0x0ae53cb6e3f42a79
 import FungibleToken from 0xee82856bf20e2aa6
 
 access(all) struct AccountBalances {
-    pub let default_balance: UFix64
-    pub let is_proxy: Bool
-    pub let proxy_balance: UFix64
+    access(all)  let default_balance: UFix64
+    access(all)  let is_proxy: Bool
+    access(all)  let proxy_balance: UFix64
 
     init(default_balance: UFix64, is_proxy: Bool, proxy_balance: UFix64) {
         self.default_balance = default_balance
