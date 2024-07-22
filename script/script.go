@@ -90,7 +90,11 @@ transaction(publicKey: String) {
 // returns an account's balances.
 //
 // The returned balances include the value of the account's default FLOW vault,
-// as well as the optional FlowColdStorageProxy vault.
+// Jul 2024: The introduction of FlowColdStorageProxy contract was originally intended to be for the
+// Coinbase Institution investment featureset. However, this feature was never completed or released to MN
+// The current version of Rosetta assumes that all CB accounts contain the contract, which is not the case for
+// any account on MN.
+// As a result if these scripts/transactions include the import they will error on execution in MN
 const GetBalances = `import FlowToken from 0x{{.Contracts.FlowToken}}
 import FungibleToken from 0x{{.Contracts.FungibleToken}}
 
@@ -111,11 +115,11 @@ access(all) fun main(addr: Address): AccountBalances {
     let balanceRef = acct.capabilities.borrow<&FlowToken.Vault>(/public/flowTokenBalance)!
     var is_proxy = false
     var proxy_balance = 0.0
-    let ref = acct.capabilities.borrow<&FlowColdStorageProxy.Vault>(FlowColdStorageProxy.VaultCapabilityPublicPath)
-    if let vault = ref {
-        is_proxy = true
-        proxy_balance = vault.getBalance()
-    }
+    // let ref = acct.capabilities.borrow<&FlowColdStorageProxy.Vault>(FlowColdStorageProxy.VaultCapabilityPublicPath)
+    // if let vault = ref {
+    //    is_proxy = true
+    //    proxy_balance = vault.getBalance()
+    //}
     return AccountBalances(
         default_balance: balanceRef.balance,
         is_proxy: is_proxy,
