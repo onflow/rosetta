@@ -261,6 +261,7 @@ func (c Client) Execute(ctx context.Context, blockID []byte, script []byte, args
 		cargs[i] = val
 	}
 	ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
+	log.Debugf("AccessAPI.Execute(): %s", string(script))
 	resp, err := c.client.ExecuteScriptAtBlockID(
 		ctx,
 		&access.ExecuteScriptAtBlockIDRequest{
@@ -374,7 +375,7 @@ func (c *Client) SendTransaction(ctx context.Context, txn *entities.Transaction)
 		trace.EndSpanErr(span, err)
 		return nil, err
 	}
-	log.Debugf("AccessAPI.SendTransaction(): %t, %b", string(txn.Script), resp.Id)
+	log.Debugf("AccessAPI.SendTransaction(): %s", string(txn.Script))
 	trace.EndSpanOk(span)
 	return resp.Id, nil
 }
