@@ -24,8 +24,8 @@ cleanup-integration-tests:
 	rm -f tests/emulator-account.pkey
 	rm -f tests/.gitignore
 	rm -f tests/accounts-*.json
-	rm -rf /data
-	rm -f server
+	rm -rf ./data
+	rm -f ./server
 
 testnet-integration-test:
 	python3 tests/integration_test.py --network testnet --init
