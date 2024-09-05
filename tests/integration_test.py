@@ -100,13 +100,14 @@ def set_account_signer(network: str):
 #
 def init_flow_json(network: str, account_signer: str):
     cmd = f"flow-c1 init --config-only --network {network}"
-    result = subprocess.run(cmd.split(), stdout=subprocess.PIPE)
+    result = subprocess.run(cmd.split(), stdout=subprocess.PIPE, cwd=get_script_directory())
     if result.returncode != 0:
         print("\nCouldn't init directory with `flow` CLI. Is it installed?")
         exit(1)
 
     # We use signer account to create other accounts and sign transactions
-    signer_account = read_account_signer(f"{account_signer}.json")
+    account_signer_file_name = f"{account_signer}.json"
+    signer_account = read_account_signer(get_file_path(account_signer_file_name))
     save_account_to_flow_json(f"{account_signer}", signer_account)
 
 
@@ -136,17 +137,20 @@ def create_originator(network: str, account_signer: str):
     deploy_contract(network, "originator", originator["address"])
 
     # Add originator to network config file and update flow_cold_storage_proxy contract address
-    with open(f"{network}.json", "r+") as json_file:
+    filename = f"{network}.json"
+    with open(get_file_path(filename), "r+") as json_file:
         data = json.load(json_file)
-        data["originators"] = [originator["address"]]
+        data["originators"] = [remove_hex_prefix(originator["address"])]
         data["contracts"]["flow_cold_storage_proxy"] = originator["address"]
         json_file.seek(0)
         json.dump(data, json_file, indent=4)
         json_file.truncate()
 
     # Functions related to rosetta look for created accounts in accounts json file
-    originator["address"] = convert_to_rosetta_address(originator["address"])
-    with open(f'accounts-{network}.json', 'w+') as account_file:
+    filename = f"accounts-{network}.json"
+    originator["address"] = add_hex_prefix(originator["address"])
+
+    with open(get_file_path(filename), 'w+') as account_file:
         accounts = dict()
         accounts["originator"] = originator
         data = json.dumps(accounts, indent=4)
@@ -161,7 +165,7 @@ def create_originator(network: str, account_signer: str):
 #
 def create_proxy_account(network: str, account_signer: str):
     proxy_account = create_flow_account(network, account_signer)
-    proxy_account["address"] = convert_to_rosetta_address(
+    proxy_account["address"] = add_hex_prefix(
         proxy_account["address"])
     save_account(network, "proxy_account", proxy_account)
 
@@ -172,7 +176,8 @@ def create_proxy_account(network: str, account_signer: str):
 # Rosetta server with the `{network}.json` configuration file in a separate terminal session.
 #
 def setup_rosetta(network: str):
-    result = subprocess.run(["make"], stdout=subprocess.PIPE, cwd="../")
+    cwd = os.path.join(get_script_directory(), "..")
+    result = subprocess.run(["make"], stdout=subprocess.PIPE, cwd=cwd)
     if result.returncode != 0:
         print("Couldn't build rosetta. `make` command failed")
         exit(1)

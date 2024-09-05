@@ -61,7 +61,7 @@ def rosetta_create_account_transaction(network, transaction_type, root_originato
 
     sign_tx_cmd = "go run ../cmd/sign/sign.go " + \
                   root_originator["private_key"] + " " + hex_bytes
-    result = subprocess.run(sign_tx_cmd.split(), stdout=subprocess.PIPE)
+    result = subprocess.run(sign_tx_cmd.split(), stdout=subprocess.PIPE, cwd=get_script_directory())
     if result.returncode != 0:
         print(
             f"Couldn't sign the tx. {sign_tx_cmd} finished with non-zero code")
@@ -90,7 +90,7 @@ def rosetta_create_account_transaction(network, transaction_type, root_originato
         "private_key": flow_private_key,
         "rosetta_key": public_rosetta_key
     }
-    save_account(account_name, created_account)
+    save_account(network, account_name, created_account)
 
     return created_account
 
@@ -149,7 +149,7 @@ def rosetta_transfer(network: str, sender_name, sender_address, receiver_name, r
     unsigned_tx = payloads_response["unsigned_transaction"]
 
     sign_tx_cmd = "go run ../cmd/sign/sign.go " + private_key + " " + hex_bytes
-    result = subprocess.run(sign_tx_cmd.split(), stdout=subprocess.PIPE)
+    result = subprocess.run(sign_tx_cmd.split(), stdout=subprocess.PIPE, cwd=get_script_directory())
     if result.returncode != 0:
         print(
             f"Couldn't sign the tx. {sign_tx_cmd} finished with non-zero code")
@@ -247,7 +247,7 @@ def rosetta_proxy_transfer(network,
     sender_account = read_account(network, sender_name)
     sender_private_key = sender_account["private_key"]
     sign_tx_cmd = f"go run ../cmd/sign/sign.go {sender_private_key} {hex_bytes}"
-    result = subprocess.run(sign_tx_cmd.split(), stdout=subprocess.PIPE)
+    result = subprocess.run(sign_tx_cmd.split(), stdout=subprocess.PIPE, cwd=get_script_directory())
     if result.returncode != 0:
         print(
             f"Couldn't sign the tx. {sign_tx_cmd} finished with non-zero code")
@@ -276,7 +276,7 @@ def rosetta_proxy_transfer(network,
     originator_root_account = read_account(network, originator_root_name)
     originator_root_private_key = originator_root_account["private_key"]
     sign_tx_cmd = f"go run ../cmd/sign/sign.go {originator_root_private_key} {hex_bytes}"
-    result = subprocess.run(sign_tx_cmd.split(), stdout=subprocess.PIPE)
+    result = subprocess.run(sign_tx_cmd.split(), stdout=subprocess.PIPE, cwd=get_script_directory())
     if result.returncode != 0:
         print(
             f"Couldn't sign the tx. {sign_tx_cmd} finished with non-zero code")

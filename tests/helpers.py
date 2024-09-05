@@ -3,6 +3,7 @@ import subprocess
 import re
 import json
 import sys
+import os
 
 import requests
 
@@ -45,7 +46,10 @@ def read_account_signer(file_name):
 #     account_data (dict): A dictionary containing the account's data (e.g., address, keys).
 #
 def save_account(network, account_name, account_data):
-    with open(f'accounts-{network}.json', 'r+') as account_file:
+    filename = f'accounts-{network}.json'
+    filepath = get_file_path(filename)
+
+    with open(filepath, 'r+') as account_file:
         accounts = json.load(account_file)
         accounts[account_name] = account_data
 
@@ -64,13 +68,25 @@ def save_account(network, account_name, account_data):
 #     account_data (dict): A dictionary containing the account's data (e.g., address, keys).
 #
 def save_account_to_flow_json(account_name, account_data):
-    with open('flow.json', "r+") as file:
+    filepath = get_file_path('flow.json')
+    with open(filepath, "r+") as file:
         accounts = json.load(file)
         accounts["accounts"][account_name] = account_data
 
         data = json.dumps(accounts, indent=4)
         file.seek(0)
         file.write(data)
+
+
+# Returns the directory where the script is located
+def get_script_directory():
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+# Returns the absolute path of a file relative to the script's directory
+def get_file_path(filename):
+    script_dir = get_script_directory()
+    return os.path.join(script_dir, filename)
 
 
 # Creates a new Flow account on the network.
@@ -88,7 +104,7 @@ def create_flow_account(network: str, account_signer: str):
 
     cmd = f"flow-c1 accounts create --sig-algo ECDSA_secp256k1 --network {network}" \
           f" --signer {account_signer} --key {public_key}"
-    cmd_result = subprocess.run(cmd.split(), stdout=subprocess.PIPE)
+    cmd_result = subprocess.run(cmd.split(), stdout=subprocess.PIPE, cwd=get_script_directory())
     if cmd_result.returncode != 0:
         print(f"Couldn't create account. {cmd} finished with non-zero code")
         exit(1)
@@ -117,10 +133,6 @@ def create_flow_account(network: str, account_signer: str):
 #     account_address (str): The address of the account to deploy the contract to.
 #
 def deploy_contract(network: str, account_name, account_address):
-    fund_account(network, account_address)
-
-    contract_path = "../script/cadence/contracts/FlowColdStorageProxy.cdc"
-
     if network == "testnet":
         flow_token_address = "0x7e60df042a9c0868"
         fungible_token_address = "0x9a0766d93b6608b7"
@@ -128,14 +140,14 @@ def deploy_contract(network: str, account_name, account_address):
         flow_token_address = "0x4445e7ad11568276"
         fungible_token_address = "0xa0225e7000ac82a9"
 
-    replace_address_in_contract(
-        contract_path, "FlowToken", flow_token_address)
-    replace_address_in_contract(
-        contract_path, "FungibleToken", fungible_token_address)
+    contract_path = os.path.join(get_script_directory(), "..", "script", "cadence", "contracts", "FlowColdStorageProxy.cdc")
+    replace_address_in_contract(contract_path, "FlowToken", flow_token_address)
+    replace_address_in_contract(contract_path, "FungibleToken", fungible_token_address)
+
+    fund_account(network, account_address)
 
     deploy_contract_cmd = f"flow-c1 accounts add-contract {contract_path} --signer {account_name} --network {network}"
-    result = subprocess.run(deploy_contract_cmd.split(),
-                            stdout=subprocess.PIPE)
+    result = subprocess.run(deploy_contract_cmd.split(), stdout=subprocess.PIPE, cwd=get_script_directory())
     if result.returncode != 0:
         print(f"Couldn't deploy contract to {network}. `{deploy_contract_cmd}` cmd finished with non-zero code.\n"
               f"Is account funded?")
@@ -158,7 +170,7 @@ def fund_account(network: str, account_address):
         f"Open a link and fund account https://{network}-faucet.onflow.org/fund-account?address={account_address}\n"
         f"Press enter when finished...")
 
-    # result = subprocess.run(fund_account_cmd.split(), stdout=subprocess.PIPE)
+    # result = subprocess.run(fund_account_cmd.split(), stdout=subprocess.PIPE, cwd=get_script_directory())
     # if result.returncode != 0:
     #     print(
     #         f"Couldn't fund account {account_address} on {network}. {fund_account_cmd} finished with non-zero code")
@@ -193,7 +205,7 @@ def replace_address_in_contract(contract_path, contract_name, address):
 #
 def generate_keys():
     gen_key_cmd = "go run ../cmd/genkey/genkey.go"
-    result = subprocess.run(gen_key_cmd.split(), stdout=subprocess.PIPE)
+    result = subprocess.run(gen_key_cmd.split(), stdout=subprocess.PIPE, cwd=get_script_directory())
     if result.returncode != 0:
         print(
             f"Couldn't parse output of `{gen_key_cmd}`. Process finished with non-zero code")
@@ -218,7 +230,10 @@ def generate_keys():
 #     dict: A dictionary containing the account's data.
 #
 def read_account(network: str, account_name: str) -> dict:
-    with open(f"accounts-{network}.json") as keys_file_json:
+    filename = f"accounts-{network}.json"
+    filepath = get_file_path(filename)
+
+    with open(filepath) as keys_file_json:
         accounts = json.load(keys_file_json)
         return accounts[account_name]
 
@@ -239,34 +254,18 @@ def read_account_keys(network, account_name):
     return account["address"], account["public_key"], account["private_key"], account["rosetta_key"]
 
 
-# Converts a Flow address to a Rosetta address format.
-#
-# This function converts a Flow address to the Rosetta address format by adding a "0x" prefix.
-#
-# Args:
-#     address (str): The Flow address to convert.
-#
-# Returns:
-#     str: The Rosetta address with the "0x" prefix.
-#
-def convert_to_rosetta_address(address):
+def add_hex_prefix(address):
     if address.startswith("0x"):
         return address
 
-    return add_hex_prefix(address)
-
-
-# Adds a "0x" prefix to a hexadecimal string.
-#
-# This function adds a "0x" prefix to a hexadecimal string.
-#
-# Args:
-#     address (str): The hexadecimal string to add the prefix to.
-#
-# Returns:
-#     str: The hexadecimal string with the "0x" prefix.
-def add_hex_prefix(address):
     return "0x" + address
+
+
+def remove_hex_prefix(address):
+    if address.startswith("0x"):
+        return address.replace("0x", "")
+
+    return address
 
 
 # Sends a POST request to a target URL with a JSON body.

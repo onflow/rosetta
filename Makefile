@@ -28,7 +28,7 @@ cleanup-integration-tests:
 	rm -f server
 
 testnet-integration-test:
-	python3 tests/integration_test.py --network testnet
+	python3 tests/integration_test.py --network testnet --init
 
 previewnet-integration-test:
-	python3 tests/integration_test.py --network previewnet
+	python3 tests/integration_test.py --network previewnet --init
