@@ -19,14 +19,16 @@ proto:
 	@protoc --proto_path=model --go_out=model \
 	    --go_opt=paths=source_relative model/model.proto
 
-integration-test-cleanup:
-	rm -f flow.json
-	rm -f account-keys.csv
-	rm -rf data
-	rm -rf flow-go
+cleanup-integration-tests:
+	rm -f tests/flow.json
+	rm -f tests/emulator-account.pkey
+	rm -f tests/.gitignore
+	rm -f tests/accounts-*.json
+	rm -rf /data
+	rm -f server
 
-integration-test:
-	python3 integration_test.py
+testnet-integration-test:
+	python3 tests/integration_test.py --network testnet
 
 previewnet-integration-test:
-	python3 previewnet_integration_test.py
+	python3 tests/integration_test.py --network previewnet

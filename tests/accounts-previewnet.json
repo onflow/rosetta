@@ -1,0 +1,14 @@
+{
+    "originator": {
+        "address": "0x05f842cd1b178690",
+        "public_key": "a692b4f99a82e4dc82753f30b760cee52a9a44cabc6134e0ec3bf77b6184863a3b4a0c094d86ea5a5489401157fcae93534f1de69196ee9ac0801c5c7c73dfe1",
+        "private_key": "ccc0177e301774d4166e7dd681b237f90a70c117719d76662a5cca7c1aab93bf",
+        "rosetta_key": "03a692b4f99a82e4dc82753f30b760cee52a9a44cabc6134e0ec3bf77b6184863a"
+    },
+    "proxy_account": {
+        "address": "0xe19ffb100aed864f",
+        "public_key": "349405e47c947db9e5ab448ffde2d4b22cca81e55de4dbad3a305177624e1e5cbb8d3cf6e5cdac94b3db17a957e861e4703ce0141e3f04ebe60b155587ac84e4",
+        "private_key": "bdf2596a27b10ed77dba74d56c1ad4cec4d06b50eeb5e8445de63d9a0e98bae5",
+        "rosetta_key": "02349405e47c947db9e5ab448ffde2d4b22cca81e55de4dbad3a305177624e1e5c"
+    }
+}
