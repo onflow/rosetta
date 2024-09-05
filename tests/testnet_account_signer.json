@@ -1,0 +1,10 @@
+{
+  "address": "129b3055d5c17977",
+  "key": {
+    "type": "hex",
+    "index": 0,
+    "signatureAlgorithm": "ECDSA_secp256k1",
+    "hashAlgorithm": "SHA3_256",
+    "privateKey": "8ad6b3c4ab1cb753139285870c9361590269ed633356f7349067c74b8080e834"
+  }
+}
