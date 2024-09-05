@@ -5,8 +5,6 @@ import json
 import sys
 import os
 
-import requests
-
 
 # Reads the credentials of the account that is used to sign other accounts'
 # transactions including their creation.
@@ -19,8 +17,7 @@ import requests
 #     "key": "98bf75312a38ff6c4052faf4484b95f0bfa795531e8d50da0442c75746b49a4c"
 # }
 #
-# If the file is empty or does not contain the required keys, the function
-# prints an error message and exits with a non-zero status code.
+# If the file is empty or does not contain the required keys, the function raises an exception
 #
 # Returns:
 #     dict: A dictionary containing the address and private key of the account.
@@ -30,8 +27,7 @@ def read_account_signer(file_name):
         account_signer = json.load(file)
 
     if len(json.dumps(account_signer)) == 0:
-        print(f"{file_name} should contain funded account on network")
-        exit(1)
+        raise Exception(f"{file_name} should contain funded account on network")
 
     return account_signer
 
@@ -106,8 +102,7 @@ def create_flow_account(network: str, account_signer: str):
           f" --signer {account_signer} --key {public_key}"
     cmd_result = subprocess.run(cmd.split(), stdout=subprocess.PIPE, cwd=get_script_directory())
     if cmd_result.returncode != 0:
-        print(f"Couldn't create account. {cmd} finished with non-zero code")
-        exit(1)
+        raise Exception(f"Couldn't create account. {cmd} finished with non-zero code")
 
     cmd_output = cmd_result.stdout.strip().decode()
     regex = "(Address)([\t ]+)([0-9a-z]+)"  # parsing string like 'Address 0x123456789'
@@ -149,9 +144,8 @@ def deploy_contract(network: str, account_name, account_address):
     deploy_contract_cmd = f"flow-c1 accounts add-contract {contract_path} --signer {account_name} --network {network}"
     result = subprocess.run(deploy_contract_cmd.split(), stdout=subprocess.PIPE, cwd=get_script_directory())
     if result.returncode != 0:
-        print(f"Couldn't deploy contract to {network}. `{deploy_contract_cmd}` cmd finished with non-zero code.\n"
+        raise Exception(f"Couldn't deploy contract to {network}. `{deploy_contract_cmd}` cmd finished with non-zero code.\n"
               f"Is account funded?")
-        exit(1)
     print(result.stdout.decode('utf-8'))
 
 
@@ -172,9 +166,8 @@ def fund_account(network: str, account_address):
 
     # result = subprocess.run(fund_account_cmd.split(), stdout=subprocess.PIPE, cwd=get_script_directory())
     # if result.returncode != 0:
-    #     print(
+    #     raise Exception(
     #         f"Couldn't fund account {account_address} on {network}. {fund_account_cmd} finished with non-zero code")
-    #     exit(1)
 
 
 # Replaces the address in a Cadence contract file.
@@ -207,9 +200,7 @@ def generate_keys():
     gen_key_cmd = "go run ../cmd/genkey/genkey.go"
     result = subprocess.run(gen_key_cmd.split(), stdout=subprocess.PIPE, cwd=get_script_directory())
     if result.returncode != 0:
-        print(
-            f"Couldn't parse output of `{gen_key_cmd}`. Process finished with non-zero code")
-        exit(1)
+        raise Exception(f"Couldn't parse output of `{gen_key_cmd}`. Process finished with non-zero code")
 
     keys = result.stdout.decode('utf-8').split("\n")
     public_flow_key = keys[0].split(" ")[-1]
@@ -266,21 +257,3 @@ def remove_hex_prefix(address):
         return address.replace("0x", "")
 
     return address
-
-
-# Sends a POST request to a target URL with a JSON body.
-#
-# This function sends a POST request to a target URL with a JSON body.
-# It returns the response as a JSON object.
-#
-# Args:
-#     target_url (str): The target URL to send the request to.
-#     body (dict): The JSON body to send in the request.
-#
-# Returns:
-#     dict: The response from the server as a JSON object.
-#
-def request_router(target_url, body):
-    headers = {'Content-type': 'application/json'}
-    r = requests.post(target_url, data=json.dumps(body), headers=headers)
-    return r.json()

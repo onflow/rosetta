@@ -1,4 +1,9 @@
-from helpers import *
+import json
+import subprocess
+
+import requests
+
+import helpers
 
 rosetta_host_url = "http://127.0.0.1:8080"
 
@@ -26,7 +31,7 @@ rosetta_host_url = "http://127.0.0.1:8080"
 #     dict: A dictionary containing the new account's details (address, public key, private key, Rosetta key).
 #
 def rosetta_create_account_transaction(network, transaction_type, root_originator, account_name, operation_id):
-    public_flow_key, public_rosetta_key, flow_private_key = generate_keys()
+    public_flow_key, public_rosetta_key, flow_private_key = helpers.generate_keys()
     metadata = {
         "public_key": public_rosetta_key
     }
@@ -44,28 +49,23 @@ def rosetta_create_account_transaction(network, transaction_type, root_originato
                                                  root_originator["address"],
                                                  operations)
     if "options" not in preprocess_response:
-        print(f"Preprocess transaction returned unexpected response")
-        exit(1)
+        raise Exception("Preprocess transaction returned unexpected response")
     metadata_response = metadata_transaction(network,
                                              preprocess_response["options"])
     if "metadata" not in metadata_response:
-        print(f"Metadata transaction finished returned unexpected response")
-        exit(1)
+        raise Exception("Metadata transaction finished returned unexpected response")
     payloads_response = payloads_transaction(network,
                                              operations,
                                              metadata_response["metadata"]["protobuf"])
     if "payloads" not in payloads_response:
-        print(f"Payloads transaction returned unexpected response")
-        exit(1)
+        raise Exception("Payloads transaction returned unexpected response")
     hex_bytes = payloads_response["payloads"][0]["hex_bytes"]
 
     sign_tx_cmd = "go run ../cmd/sign/sign.go " + \
                   root_originator["private_key"] + " " + hex_bytes
-    result = subprocess.run(sign_tx_cmd.split(), stdout=subprocess.PIPE, cwd=get_script_directory())
+    result = subprocess.run(sign_tx_cmd.split(), stdout=subprocess.PIPE, cwd=helpers.get_script_directory())
     if result.returncode != 0:
-        print(
-            f"Couldn't sign the tx. {sign_tx_cmd} finished with non-zero code")
-        exit(1)
+        raise Exception(f"Couldn't sign the tx. {sign_tx_cmd} finished with non-zero code")
     signed_tx = result.stdout.decode('utf-8')[:-1]
 
     unsigned_tx = payloads_response["unsigned_transaction"]
@@ -90,7 +90,7 @@ def rosetta_create_account_transaction(network, transaction_type, root_originato
         "private_key": flow_private_key,
         "rosetta_key": public_rosetta_key
     }
-    save_account(network, account_name, created_account)
+    helpers.save_account(network, account_name, created_account)
 
     return created_account
 
@@ -143,17 +143,15 @@ def rosetta_transfer(network: str, sender_name, sender_address, receiver_name, r
                                              operations,
                                              metadata_response["metadata"]["protobuf"])
 
-    _, _, private_key, rosetta_key = read_account_keys(network, sender_name)
+    _, _, private_key, rosetta_key = helpers.read_account_keys(network, sender_name)
     hex_bytes = payloads_response["payloads"][0]["hex_bytes"]
 
     unsigned_tx = payloads_response["unsigned_transaction"]
 
     sign_tx_cmd = "go run ../cmd/sign/sign.go " + private_key + " " + hex_bytes
-    result = subprocess.run(sign_tx_cmd.split(), stdout=subprocess.PIPE, cwd=get_script_directory())
+    result = subprocess.run(sign_tx_cmd.split(), stdout=subprocess.PIPE, cwd=helpers.get_script_directory())
     if result.returncode != 0:
-        print(
-            f"Couldn't sign the tx. {sign_tx_cmd} finished with non-zero code")
-        exit(1)
+        raise Exception(f"Couldn't sign the tx. {sign_tx_cmd} finished with non-zero code")
     signed_tx = result.stdout.decode('utf-8')[:-1]
 
     combine_response = combine_transaction(network, unsigned_tx, sender_address, hex_bytes, rosetta_key, signed_tx)
@@ -244,14 +242,12 @@ def rosetta_proxy_transfer(network,
     unsigned_tx = payloads_response["unsigned_transaction"]
 
     # sign tx
-    sender_account = read_account(network, sender_name)
+    sender_account = helpers.read_account(network, sender_name)
     sender_private_key = sender_account["private_key"]
     sign_tx_cmd = f"go run ../cmd/sign/sign.go {sender_private_key} {hex_bytes}"
-    result = subprocess.run(sign_tx_cmd.split(), stdout=subprocess.PIPE, cwd=get_script_directory())
+    result = subprocess.run(sign_tx_cmd.split(), stdout=subprocess.PIPE, cwd=helpers.get_script_directory())
     if result.returncode != 0:
-        print(
-            f"Couldn't sign the tx. {sign_tx_cmd} finished with non-zero code")
-        exit(1)
+        raise Exception(f"Couldn't sign the tx. {sign_tx_cmd} finished with non-zero code")
     signed_tx = result.stdout.decode('utf-8')[:-1]
 
     combine_response = combine_transaction(network,
@@ -273,14 +269,12 @@ def rosetta_proxy_transfer(network,
     unsigned_tx = payloads_response["unsigned_transaction"]
 
     # sign tx
-    originator_root_account = read_account(network, originator_root_name)
+    originator_root_account = helpers.read_account(network, originator_root_name)
     originator_root_private_key = originator_root_account["private_key"]
     sign_tx_cmd = f"go run ../cmd/sign/sign.go {originator_root_private_key} {hex_bytes}"
-    result = subprocess.run(sign_tx_cmd.split(), stdout=subprocess.PIPE, cwd=get_script_directory())
+    result = subprocess.run(sign_tx_cmd.split(), stdout=subprocess.PIPE, cwd=helpers.get_script_directory())
     if result.returncode != 0:
-        print(
-            f"Couldn't sign the tx. {sign_tx_cmd} finished with non-zero code")
-        exit(1)
+        raise Exception(f"Couldn't sign the tx. {sign_tx_cmd} finished with non-zero code")
     signed_tx = result.stdout.decode('utf-8')[:-1]
 
     combine_response = combine_transaction(network,
@@ -457,3 +451,21 @@ def submit_transaction(network, signed_tx):
         "signed_transaction": signed_tx
     }
     return request_router(target_url, data)
+
+
+# Sends a POST request to a target URL with a JSON body.
+#
+# This function sends a POST request to a target URL with a JSON body.
+# It returns the response as a JSON object.
+#
+# Args:
+#     target_url (str): The target URL to send the request to.
+#     body (dict): The JSON body to send in the request.
+#
+# Returns:
+#     dict: The response from the server as a JSON object.
+#
+def request_router(target_url, body):
+    headers = {'Content-type': 'application/json'}
+    r = requests.post(target_url, data=json.dumps(body), headers=headers)
+    return r.json()

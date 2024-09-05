@@ -71,12 +71,10 @@ def parse_network():
         try:
             network = sys.argv[sys.argv.index("--network") + 1]
         except IndexError:
-            print("Error: --network flag provided without a value")
-            exit(1)
+            raise Exception("Error: --network flag provided without a value")
 
     if network != "testnet" and network != "previewnet":
-        print("Error: only 2 networks are supported: testnet or previewnet")
-        exit(1)
+        raise Exception("Error: only 2 networks are supported: testnet or previewnet")
 
     return network
 
@@ -87,8 +85,7 @@ def set_account_signer(network: str):
     elif network == "previewnet":
         account_signer = "previewnet_account_signer"
     else:
-        print(f"Error: unexpected {network} argument")
-        exit(1)
+        raise Exception(f"Error: unexpected {network} argument")
 
     return account_signer
 
@@ -102,8 +99,7 @@ def init_flow_json(network: str, account_signer: str):
     cmd = f"flow-c1 init --config-only --network {network}"
     result = subprocess.run(cmd.split(), stdout=subprocess.PIPE, cwd=get_script_directory())
     if result.returncode != 0:
-        print("\nCouldn't init directory with `flow` CLI. Is it installed?")
-        exit(1)
+        raise Exception("Couldn't init directory with `flow` CLI. Is it installed?")
 
     # We use signer account to create other accounts and sign transactions
     account_signer_file_name = f"{account_signer}.json"
@@ -179,8 +175,7 @@ def setup_rosetta(network: str):
     cwd = os.path.join(get_script_directory(), "..")
     result = subprocess.run(["make"], stdout=subprocess.PIPE, cwd=cwd)
     if result.returncode != 0:
-        print("Couldn't build rosetta. `make` command failed")
-        exit(1)
+        raise Exception("Couldn't build rosetta. `make` command failed")
 
     # TODO: we can do it ourselves without user interaction
     _ = input(f"Please start rosetta by running ./server [path to {network}.json] in different terminal.\n"
