@@ -3,6 +3,7 @@ package script
 
 import (
 	"bytes"
+	_ "embed"
 	"text/template"
 
 	"github.com/onflow/rosetta/config"
@@ -14,244 +15,55 @@ import (
 //
 // Adapted from:
 // https://github.com/onflow/flow-core-contracts/blob/master/transactions/flowToken/transfer_tokens.cdc
-const BasicTransfer = `import FlowToken from 0x{{.Contracts.FlowToken}}
-import FungibleToken from 0x{{.Contracts.FungibleToken}}
-
-transaction(receiver: Address, amount: UFix64) {
-
-    // The Vault resource that holds the tokens that are being transferred.
-    let xfer: @FungibleToken.Vault
-
-    prepare(sender: AuthAccount) {
-        // Get a reference to the sender's FlowToken.Vault.
-        let vault = sender.borrow<&FlowToken.Vault>(from: /storage/flowTokenVault)
-            ?? panic("Could not borrow a reference to the sender's vault")
-
-        // Withdraw tokens from the sender's FlowToken.Vault.
-        self.xfer <- vault.withdraw(amount: amount)
-    }
-
-    execute {
-        // Get a reference to the receiver's default FungibleToken.Receiver
-        // for FLOW tokens.
-        let receiver = getAccount(receiver)
-            .getCapability(/public/flowTokenReceiver)
-            .borrow<&{FungibleToken.Receiver}>()
-            ?? panic("Could not borrow a reference to the receiver's vault")
-
-        // Deposit the withdrawn tokens in the receiver's vault.
-        receiver.deposit(from: <-self.xfer)
-    }
-}
-`
+// Confirmed in use: https://www.flowdiver.io/tx/5316f7b228370d2571a3f2ec5b060a142d3261d8e05b80010c204915843d69e7?tab=script
+//
+//go:embed cadence/transactions/basic-transfer.cdc
+var BasicTransfer string
 
 // ComputeFees computes the transaction fees.
-const ComputeFees = `import FlowFees from 0x{{.Contracts.FlowFees}}
-
-pub fun main(inclusionEffort: UFix64, executionEffort: UFix64): UFix64 {
-    return FlowFees.computeFees(inclusionEffort: inclusionEffort, executionEffort: executionEffort)
-}
-`
+//
+//go:embed cadence/scripts/compute-fees.cdc
+var ComputeFees string
 
 // CreateAccount defines the template for creating new Flow accounts.
-const CreateAccount = `transaction(publicKeys: [String]) {
-    prepare(payer: AuthAccount) {
-        for key in publicKeys {
-            // Create an account and set the account public key.
-            let acct = AuthAccount(payer: payer)
-            let publicKey = PublicKey(
-                publicKey: key.decodeHex(),
-                signatureAlgorithm: SignatureAlgorithm.ECDSA_secp256k1
-            )
-            acct.keys.add(
-                publicKey: publicKey,
-                hashAlgorithm: HashAlgorithm.SHA3_256,
-                weight: 1000.0
-            )
-        }
-    }
-}
-`
+// Confirmed in use: https://www.flowdiver.io/tx/ff0a8d816fe4f73edee665454f26b5fc06f5a39758cb90c313a9c3372f45f6c7?tab=script
+//
+//go:embed cadence/transactions/create-account.cdc
+var CreateAccount string
 
 // CreateProxyAccount defines the template for creating a new Flow account with
 // a FlowColdStorageProxy Vault.
-const CreateProxyAccount = `import FlowColdStorageProxy from 0x{{.Contracts.FlowColdStorageProxy}}
-
-transaction(publicKey: String) {
-    prepare(payer: AuthAccount) {
-        // Create a new account with a FlowColdStorageProxy Vault.
-        FlowColdStorageProxy.setup(payer: payer, publicKey: publicKey.decodeHex())
-    }
-}
-`
+//
+//go:embed cadence/transactions/create-proxy-account.cdc
+var CreateProxyAccount string
 
 // GetBalances defines the template for the read-only transaction script that
 // returns an account's balances.
 //
 // The returned balances include the value of the account's default FLOW vault,
-// as well as the optional FlowColdStorageProxy vault.
-const GetBalances = `import FlowColdStorageProxy from 0x{{.Contracts.FlowColdStorageProxy}}
-import FlowToken from 0x{{.Contracts.FlowToken}}
-import FungibleToken from 0x{{.Contracts.FungibleToken}}
-
-pub struct AccountBalances {
-    pub let default_balance: UFix64
-    pub let is_proxy: Bool
-    pub let proxy_balance: UFix64
-
-    init(default_balance: UFix64, is_proxy: Bool, proxy_balance: UFix64) {
-        self.default_balance = default_balance
-        self.is_proxy = is_proxy
-        self.proxy_balance = proxy_balance
-    }
-}
-
-pub fun main(addr: Address): AccountBalances {
-    let acct = getAccount(addr)
-    let balanceRef = acct.getCapability(/public/flowTokenBalance)
-                         .borrow<&FlowToken.Vault{FungibleToken.Balance}>()!
-    var is_proxy = false
-    var proxy_balance = 0.0
-    let ref = acct.getCapability(FlowColdStorageProxy.VaultCapabilityPublicPath).borrow<&FlowColdStorageProxy.Vault>()
-    if let vault = ref {
-        is_proxy = true
-        proxy_balance = vault.getBalance()
-    }
-    return AccountBalances(
-        default_balance: balanceRef.balance,
-        is_proxy: is_proxy,
-        proxy_balance: proxy_balance
-    )
-}
-`
-
-// GetBalancesBasic defines the template for the read-only transaction script
-// that returns the balance of an account's default FLOW vault.
-const GetBalancesBasic = `import FlowToken from 0x{{.Contracts.FlowToken}}
-import FungibleToken from 0x{{.Contracts.FungibleToken}}
-
-pub struct AccountBalances {
-    pub let default_balance: UFix64
-    pub let is_proxy: Bool
-    pub let proxy_balance: UFix64
-
-    init(default_balance: UFix64, is_proxy: Bool, proxy_balance: UFix64) {
-        self.default_balance = default_balance
-        self.is_proxy = is_proxy
-        self.proxy_balance = proxy_balance
-    }
-}
-
-pub fun main(addr: Address): AccountBalances {
-    let acct = getAccount(addr)
-    let balanceRef = acct.getCapability(/public/flowTokenBalance)
-                         .borrow<&FlowToken.Vault{FungibleToken.Balance}>()!
-    return AccountBalances(
-        default_balance: balanceRef.balance,
-        is_proxy: false,
-        proxy_balance: 0.0
-    )
-}
-`
-
-// GetProxyNonce defines the template for the read-only transaction script that
-// returns a proxy account's sequence number, i.e. the next nonce value for its
-// FlowColdStorageProxy Vault.
+// Jul 2024: The introduction of FlowColdStorageProxy contract was originally intended to be for the
+// Coinbase Institution investment feature set. However, this feature was never completed or released to MN
+// The current version of Rosetta assumes that all CB accounts contain the contract, which is not the case for
+// any account on MN.
+// As a result if these scripts/transactions include the import they will error on execution in MN
 //
-// If the account isn't a proxy account, i.e. doesn't have a
-// FlowColdStorageProxy Vault, then it will return -1.
-const GetProxyNonce = `import FlowColdStorageProxy from 0x{{.Contracts.FlowColdStorageProxy}}
+//go:embed cadence/scripts/get-balances.cdc
+var GetBalances string
 
-pub fun main(addr: Address): Int64 {
-    let acct = getAccount(addr)
-    let ref = acct.getCapability(FlowColdStorageProxy.VaultCapabilityPublicPath).borrow<&FlowColdStorageProxy.Vault>()
-    if let vault = ref {
-        return vault.lastNonce + 1
-    }
-    return -1
-}
-`
-
-// GetProxyPublicKey defines the template for the read-only transaction script
-// that returns a proxy account's public key.
-//
-// If the account isn't a proxy account, i.e. doesn't have a
-// FlowColdStorageProxy Vault, then it will return the empty string.
-const GetProxyPublicKey = `import FlowColdStorageProxy from 0x{{.Contracts.FlowColdStorageProxy}}
-
-pub fun main(addr: Address): String {
-    let acct = getAccount(addr)
-    let ref = acct.getCapability(FlowColdStorageProxy.VaultCapabilityPublicPath).borrow<&FlowColdStorageProxy.Vault>()
-    if let vault = ref {
-        return String.encodeHex(vault.getPublicKey())
-    }
-    return ""
-}
-`
+//go:embed cadence/scripts/get-proxy-public-key.cdc
+var GetProxyPublicKey string
 
 // ProxyTransfer defines the template for doing a transfer of FLOW from a proxy
 // account.
-const ProxyTransfer = `import FlowColdStorageProxy from 0x{{.Contracts.FlowColdStorageProxy}}
-
-transaction(sender: Address, receiver: Address, amount: UFix64, nonce: Int64, sig: String) {
-    prepare(payer: AuthAccount) {
-    }
-    execute {
-        // Get a reference to the sender's FlowColdStorageProxy.Vault.
-        let acct = getAccount(sender)
-        let vault = acct.getCapability(FlowColdStorageProxy.VaultCapabilityPublicPath).borrow<&FlowColdStorageProxy.Vault>()!
-
-        // Transfer tokens to the receiver.
-        vault.transfer(receiver: receiver, amount: amount, nonce: nonce, sig: sig.decodeHex())
-    }
-}
-`
+//
+//go:embed cadence/transactions/proxy-transfer.cdc
+var ProxyTransfer string
 
 // SetContract deploys/updates a contract on an account, while also updating the
 // account's signing key.
-const SetContract = `transaction(update: Bool, contractName: String, contractCode: String, prevKeyIndex: Int, newKey: String, keyMessage: String, keySignature: String, keyMetadata: String) {
-    prepare(payer: AuthAccount) {
-        let key = PublicKey(
-            publicKey: newKey.decodeHex(),
-            signatureAlgorithm: SignatureAlgorithm.ECDSA_secp256k1
-        )
-        let verified = key.verify(
-            signature: keySignature.decodeHex(),
-            signedData: keyMessage.utf8,
-            domainSeparationTag: "",
-            hashAlgorithm: HashAlgorithm.SHA2_256
-        )
-        if !verified {
-            panic("Key cannot be verified")
-        }
-        let prevKey = payer.keys.get(keyIndex: prevKeyIndex)
-        if prevKey == nil {
-            panic("Invalid prevKeyIndex, didn't find matching key")
-        }
-        let nextKey = payer.keys.get(keyIndex: prevKeyIndex + 1)
-        if nextKey != nil {
-            panic("Invalid prevKeyIndex, found key at next key index")
-        }
-        if update {
-            payer.contracts.update__experimental(
-                name: contractName,
-                code: contractCode.decodeHex()
-            )
-        } else {
-            payer.contracts.add(
-                name: contractName,
-                code: contractCode.decodeHex()
-            )
-        }
-        payer.keys.add(
-            publicKey: key,
-            hashAlgorithm: HashAlgorithm.SHA3_256,
-            weight: 1000.0
-        )
-        payer.keys.revoke(keyIndex: prevKeyIndex)
-    }
-}
-`
+//
+//go:embed cadence/transactions/proxy-contract-update.cdc
+var SetContract string
 
 // Compile compiles the given script for a particular Flow chain.
 func Compile(name string, src string, chain *config.Chain) []byte {
