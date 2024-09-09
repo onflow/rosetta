@@ -7,10 +7,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/onflow/cadence"
+	"github.com/onflow/cadence/encoding/ccf"
 	jsoncdc "github.com/onflow/cadence/encoding/json"
 	_ "github.com/onflow/cadence/runtime/stdlib" // imported for side-effects only
-	"github.com/onflow/flow-go/crypto"
-	"github.com/onflow/flow-go/crypto/hash"
+	"github.com/onflow/crypto"
+	"github.com/onflow/crypto/hash"
 	"github.com/onflow/flow-go/model/fingerprint"
 	"github.com/onflow/flow-go/model/flow"
 	"github.com/onflow/flow-go/storage/merkle"
@@ -19,89 +21,6 @@ import (
 	"github.com/onflow/rosetta/config"
 	"github.com/onflow/rosetta/log"
 )
-
-// convertExecutionResultV5 temporary function to convert to v0.29.x ExecutionResults while using v0.30.x in go.mod
-func convertExecutionResultV5(
-	hash []byte,
-	height uint64,
-	result *entities.ExecutionResult) (flowExecutionResultV5, bool) {
-	// largely repeated code, but inner types changed, so can't re-use/abstract convertExecutionResult
-	exec := flowExecutionResultV5{
-		BlockID:          toFlowIdentifier(result.BlockId),
-		ExecutionDataID:  toFlowIdentifier(result.ExecutionDataId),
-		PreviousResultID: toFlowIdentifier(result.PreviousResultId),
-	}
-	for _, chunk := range result.Chunks {
-		exec.Chunks = append(exec.Chunks, &flowChunkV5{
-			// same order as v0.29.x
-			ChunkBody: flowChunkBodyV5{
-				BlockID:              toFlowIdentifier(chunk.BlockId),
-				CollectionIndex:      uint(chunk.CollectionIndex),
-				EventCollection:      toFlowIdentifier(chunk.EventCollection),
-				NumberOfTransactions: uint64(chunk.NumberOfTransactions),
-				StartState:           flow.StateCommitment(toFlowIdentifier(chunk.StartState)),
-				TotalComputationUsed: chunk.TotalComputationUsed,
-			},
-			EndState: flow.StateCommitment(toFlowIdentifier(chunk.EndState)),
-			Index:    chunk.Index,
-		})
-	}
-	for _, ev := range result.ServiceEvents {
-		eventType := flow.ServiceEventType(ev.Type)
-		switch eventType {
-		case flow.ServiceEventSetup:
-			setup := &flow.EpochSetup{}
-			err := json.Unmarshal(ev.Payload, setup)
-			if err != nil {
-				log.Errorf(
-					"Failed to decode %q service event in block %x at height %d: %s",
-					ev.Type, hash, height, err,
-				)
-				return flowExecutionResultV5{}, false
-			}
-			exec.ServiceEvents = append(exec.ServiceEvents, flow.ServiceEvent{
-				Event: setup,
-				Type:  eventType,
-			})
-		case flow.ServiceEventCommit:
-			commit := &flow.EpochCommit{}
-			err := json.Unmarshal(ev.Payload, commit)
-			if err != nil {
-				log.Errorf(
-					"Failed to decode %q service event in block %x at height %d: %s",
-					ev.Type, hash, height, err,
-				)
-				return flowExecutionResultV5{}, false
-			}
-			exec.ServiceEvents = append(exec.ServiceEvents, flow.ServiceEvent{
-				Event: commit,
-				Type:  eventType,
-			})
-		case flow.ServiceEventVersionBeacon:
-			beacon := &flow.VersionBeacon{}
-			err := json.Unmarshal(ev.Payload, beacon)
-			if err != nil {
-				log.Errorf(
-					"Failed to decode %q service event in block %x at height %d: %s",
-					ev.Type, hash, height, err,
-				)
-				return flowExecutionResultV5{}, false
-			}
-			exec.ServiceEvents = append(exec.ServiceEvents, flow.ServiceEvent{
-				Event: beacon,
-				Type:  eventType,
-			})
-		default:
-			log.Errorf(
-				"Unknown service event type in block %x at height %d: %q",
-				hash, height, ev.Type,
-			)
-			return flowExecutionResultV5{}, false
-		}
-	}
-	return exec, true
-
-}
 
 func convertExecutionResult(hash []byte, height uint64, result *entities.ExecutionResult) (flowExecutionResult, bool) {
 	// todo: add V6 version branching here directly after mainnet23 spork
@@ -180,26 +99,36 @@ func convertExecutionResult(hash []byte, height uint64, result *entities.Executi
 	return exec, true
 }
 
-func decodeEvent(typ string, evt *entities.Event, hash []byte, height uint64) []interface{} {
-	val, err := jsoncdc.Decode(access.NoopMemoryGauge, evt.Payload)
+func decodeEvent(typ string, evt *entities.Event, hash []byte, height uint64) (cadence.Event, error) {
+	val, err := decodePayload(evt.Payload)
 	if err != nil {
 		log.Errorf(
 			"Failed to decode %s event payload in transaction %x in block %x at height %d: %s",
 			typ, evt.TransactionId, hash, height, err,
 		)
 		time.Sleep(time.Second)
-		return nil
+		return cadence.Event{}, err
 	}
-	fields, ok := val.ToGoValue().([]interface{})
+	event, ok := val.(cadence.Event)
 	if !ok {
 		log.Errorf(
-			"Failed to convert %s event payload in transaction %x in block %x at height %d to Go slice",
+			"Failed to convert %s event payload in transaction %x in block %x at height %d to event",
 			typ, evt.TransactionId, hash, height,
 		)
 		time.Sleep(time.Second)
-		return nil
+		return cadence.Event{}, err
 	}
-	return fields
+
+	return event, nil
+}
+
+func decodePayload(payload []byte) (cadence.Value, error) {
+	if ccf.HasMsgPrefix(payload) {
+		// modern Access nodes support encoding events in CCF format
+		return ccf.Decode(access.NoopMemoryGauge, payload)
+	}
+
+	return jsoncdc.Decode(access.NoopMemoryGauge, payload)
 }
 
 func deriveBlockHash(spork *config.Spork, hdr flowHeader) flow.Identifier {
@@ -208,7 +137,7 @@ func deriveBlockHash(spork *config.Spork, hdr flowHeader) flow.Identifier {
 		return deriveBlockHashV1(hdr)
 	case 3, 4:
 		return deriveBlockHashV3(hdr)
-	case 5, 6:
+	case 5, 6, 7:
 		return deriveBlockHashV5(hdr)
 	}
 	panic("unreachable code")
@@ -299,7 +228,7 @@ func deriveEventsHash(spork *config.Spork, events []flowEvent) flow.Identifier {
 		return deriveEventsHashV1(events)
 	case 2, 3:
 		return deriveEventsHashV2(events)
-	case 4, 5, 6:
+	case 4, 5, 6, 7:
 		return deriveEventsHashV4(events)
 	}
 	panic("unreachable code")
@@ -395,16 +324,10 @@ func deriveExecutionResult(spork *config.Spork, exec flowExecutionResult) flow.I
 	switch spork.Version {
 	case 1:
 		return deriveExecutionResultV1(exec)
-	case 2, 3, 4, 5, 6:
+	case 2, 3, 4, 5, 6, 7:
 		return deriveExecutionResultV2(exec)
 	}
 	panic("unreachable code")
-}
-
-func deriveExecutionResultV5(exec flowExecutionResultV5) flow.Identifier {
-	// after the mainnet23 spork, deriveExecutionResult will produce the correct struct and hash
-	// but while on mainnet22, we need to use the custom struct that reflects the old V5 order of elements
-	return flow.MakeID(exec)
 }
 
 func deriveExecutionResultV1(exec flowExecutionResult) flow.Identifier {
@@ -465,9 +388,7 @@ func toSignatureSlice(v [][]byte) []crypto.Signature {
 
 func verifyBlockHash(spork *config.Spork, hash []byte, height uint64, hdr *entities.BlockHeader, block *entities.Block) bool {
 	chainID := flow.ChainID("flow-" + spork.Chain.Network)
-	if spork.Chain.Network == "canary" {
-		chainID = flow.ChainID("flow-benchnet")
-	} else if spork.Chain.Network == "emulator" {
+	if spork.Chain.Network == "emulator" {
 		chainID = flow.ChainID("flow-benchnet")
 	}
 
@@ -548,36 +469,68 @@ func verifyBlockHash(spork *config.Spork, hash []byte, height uint64, hdr *entit
 		receiptIDs = append(receiptIDs, receipt.ID())
 	}
 	receiptHash := flow.MerkleRoot(receiptIDs...)
+
 	var resultIDs []flow.Identifier
-	// for hashing versions V5 (mainnet22) and above
-	// todo: remove this double check after mainnet23 spork, and have just one call to convertExecutionResult
-	var resultIDsV5 []flow.Identifier
 	for _, src := range block.ExecutionResultList {
 		exec, ok := convertExecutionResult(hash, height, src)
 		if ok {
 			resultIDs = append(resultIDs, deriveExecutionResult(spork, exec))
 		}
-		execV5, okV5 := convertExecutionResultV5(hash, height, src)
-		if okV5 {
-			resultIDsV5 = append(resultIDsV5, deriveExecutionResultV5(execV5))
-		}
-		if !okV5 && !ok {
+		if !ok {
 			// couldn't convert either way, go by regular code path
 			return false
 		}
 	}
 	resultHash := flow.MerkleRoot(resultIDs...)
-	resultHashV5 := flow.MerkleRoot(resultIDsV5...)
-	payloadHash := flow.ConcatSum(collectionHash, sealHash, receiptHash, resultHash)
-	payloadHashV5 := flow.ConcatSum(collectionHash, sealHash, receiptHash, resultHashV5)
-	if payloadHash != xhdr.PayloadHash && payloadHashV5 != xhdr.PayloadHash {
+	payloadHash := derivePayloadHash(spork.Version, collectionHash, sealHash, receiptHash, resultHash, toFlowIdentifier(block.ProtocolStateId))
+
+	if payloadHash != xhdr.PayloadHash {
 		log.Errorf(
-			"Mismatching payload hash for block %x at height %d: expected %x, got %x for version 6 and %x for Versions before it",
-			hash, height, xhdr.PayloadHash[:], payloadHash[:], payloadHashV5[:],
+			"Mismatching payload hash for block %x at height %d: expected %x, got %x for version %d",
+			hash, height, xhdr.PayloadHash[:], payloadHash[:], spork.Version,
 		)
 		return false
 	}
 	return true
+}
+func derivePayloadHash(
+	sporkVersion int,
+	collectionHash flow.Identifier,
+	sealHash flow.Identifier,
+	receiptHash flow.Identifier,
+	resultHash flow.Identifier,
+	protocolStateId flow.Identifier,
+) flow.Identifier {
+	switch sporkVersion {
+	case 1, 2, 3, 4, 5, 6:
+		return derivePayloadHashV1(collectionHash, sealHash, receiptHash, resultHash)
+	case 7:
+		return derivePayloadHashV7(collectionHash, sealHash, receiptHash, resultHash, protocolStateId)
+	default:
+		panic("unreachable code")
+	}
+}
+
+// derivePayloadHashV1 generates a payload hash for block versions V1 - V6.
+// It concatenates and hashes the provided collection, seal, receipt, and result hashes.
+func derivePayloadHashV1(collectionHash flow.Identifier,
+	sealHash flow.Identifier,
+	receiptHash flow.Identifier,
+	resultHash flow.Identifier,
+) flow.Identifier {
+	return flow.ConcatSum(collectionHash, sealHash, receiptHash, resultHash)
+}
+
+// derivePayloadHashV7 generates a payload hash for block version V7.
+// It concatenates and hashes the provided collection, seal, receipt, result, and protocol state hashes.
+func derivePayloadHashV7(
+	collectionHash flow.Identifier,
+	sealHash flow.Identifier,
+	receiptHash flow.Identifier,
+	resultHash flow.Identifier,
+	protocolStateId flow.Identifier,
+) flow.Identifier {
+	return flow.ConcatSum(collectionHash, sealHash, receiptHash, resultHash, protocolStateId)
 }
 
 type flowEvent struct {
@@ -607,33 +560,6 @@ type flowExecutionResult struct {
 	PreviousResultID flow.Identifier
 	ServiceEvents    flow.ServiceEventList
 }
-
-// todo: decide if we should keep this or make this for V6 and above instead, since an inner structs have changed for V6+
-// flowExecutionResultV5 follows ExecutionResult formats of v0.29.x
-type flowExecutionResultV5 struct {
-	PreviousResultID flow.Identifier
-	BlockID          flow.Identifier
-	Chunks           ChunkListV5
-	ServiceEvents    flow.ServiceEventList
-	ExecutionDataID  flow.Identifier
-}
-
-type flowChunkBodyV5 struct {
-	CollectionIndex      uint
-	StartState           flow.StateCommitment
-	EventCollection      flow.Identifier
-	BlockID              flow.Identifier
-	TotalComputationUsed uint64
-	NumberOfTransactions uint64
-}
-
-type flowChunkV5 struct {
-	ChunkBody flowChunkBodyV5
-	Index     uint64
-	EndState  flow.StateCommitment
-}
-
-type ChunkListV5 []*flowChunkV5
 
 type flowHeader struct {
 	ChainID            flow.ChainID

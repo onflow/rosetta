@@ -1,5 +1,5 @@
 transaction(update: Bool, contractName: String, contractCode: String, prevKeyIndex: Int, newKey: String, keyMessage: String, keySignature: String, keyMetadata: String) {
-    prepare(payer: AuthAccount) {
+    prepare(payer: auth(AddKey) &Account) {
         let key = PublicKey(
             publicKey: newKey.decodeHex(),
             signatureAlgorithm: SignatureAlgorithm.ECDSA_secp256k1

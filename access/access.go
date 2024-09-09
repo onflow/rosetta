@@ -7,19 +7,20 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"fmt"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric"
 	"math/rand"
 	"strconv"
 	"strings"
 	"time"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	libp2ptls "github.com/libp2p/go-libp2p/p2p/security/tls"
 	"github.com/onflow/cadence"
 	jsoncdc "github.com/onflow/cadence/encoding/json"
 	"github.com/onflow/cadence/runtime/common"
-	"github.com/onflow/flow-go/crypto"
+	"github.com/onflow/crypto"
 	"github.com/onflow/flow-go/network/p2p/keyutils"
 	"github.com/onflow/flow/protobuf/go/flow/access"
 	"github.com/onflow/flow/protobuf/go/flow/entities"
@@ -165,8 +166,9 @@ func (c Client) BlockEvents(ctx context.Context, blockID []byte, typ string) ([]
 	resp, err := c.client.GetEventsForBlockIDs(
 		ctx,
 		&access.GetEventsForBlockIDsRequest{
-			BlockIds: [][]byte{blockID},
-			Type:     typ,
+			BlockIds:             [][]byte{blockID},
+			Type:                 typ,
+			EventEncodingVersion: entities.EventEncodingVersion_CCF_V0,
 		},
 	)
 	cancel()
@@ -180,6 +182,7 @@ func (c Client) BlockEvents(ctx context.Context, blockID []byte, typ string) ([]
 		return nil, err
 	}
 	trace.EndSpanOk(span)
+
 	return resp.Results[0].Events, nil
 }
 
@@ -258,6 +261,7 @@ func (c Client) Execute(ctx context.Context, blockID []byte, script []byte, args
 		cargs[i] = val
 	}
 	ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
+	log.Debugf("AccessAPI.Execute(): %s", string(script))
 	resp, err := c.client.ExecuteScriptAtBlockID(
 		ctx,
 		&access.ExecuteScriptAtBlockIDRequest{
@@ -319,6 +323,7 @@ func (c Client) LatestBlockHeader(ctx context.Context) (*entities.BlockHeader, e
 		trace.EndSpanErr(span, err)
 		return nil, err
 	}
+
 	trace.EndSpanOk(span)
 	return resp.Block, nil
 }
@@ -370,6 +375,7 @@ func (c *Client) SendTransaction(ctx context.Context, txn *entities.Transaction)
 		trace.EndSpanErr(span, err)
 		return nil, err
 	}
+	log.Debugf("AccessAPI.SendTransaction(): %s", string(txn.Script))
 	trace.EndSpanOk(span)
 	return resp.Id, nil
 }
@@ -386,7 +392,8 @@ func (c Client) Transaction(ctx context.Context, hash []byte) (*entities.Transac
 	resp, err := c.client.GetTransaction(
 		ctx,
 		&access.GetTransactionRequest{
-			Id: hash,
+			Id:                   hash,
+			EventEncodingVersion: entities.EventEncodingVersion_CCF_V0,
 		},
 	)
 	cancel()
@@ -406,8 +413,9 @@ func (c Client) TransactionResult(ctx context.Context, blockID []byte, txnIndex 
 	resp, err := c.client.GetTransactionResultByIndex(
 		ctx,
 		&access.GetTransactionByIndexRequest{
-			BlockId: blockID,
-			Index:   txnIndex,
+			BlockId:              blockID,
+			Index:                txnIndex,
+			EventEncodingVersion: entities.EventEncodingVersion_CCF_V0,
 		},
 	)
 	cancel()
@@ -428,7 +436,8 @@ func (c Client) TransactionResultByHash(ctx context.Context, hash []byte) (*acce
 	resp, err := c.client.GetTransactionResult(
 		ctx,
 		&access.GetTransactionRequest{
-			Id: hash,
+			Id:                   hash,
+			EventEncodingVersion: entities.EventEncodingVersion_CCF_V0,
 		},
 	)
 	cancel()
@@ -453,7 +462,8 @@ func (c Client) TransactionResultsByBlockID(ctx context.Context, blockID []byte)
 	resp, err := c.client.GetTransactionResultsByBlockID(
 		ctx,
 		&access.GetTransactionsByBlockIDRequest{
-			BlockId: blockID,
+			BlockId:              blockID,
+			EventEncodingVersion: entities.EventEncodingVersion_CCF_V0,
 		},
 	)
 	cancel()
@@ -473,7 +483,8 @@ func (c Client) TransactionsByBlockID(ctx context.Context, blockID []byte) ([]*e
 	resp, err := c.client.GetTransactionsByBlockID(
 		ctx,
 		&access.GetTransactionsByBlockIDRequest{
-			BlockId: blockID,
+			BlockId:              blockID,
+			EventEncodingVersion: entities.EventEncodingVersion_CCF_V0,
 		},
 	)
 	cancel()

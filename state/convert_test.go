@@ -13,13 +13,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-//var accessAddr = "access-001.canary1.nodes.onflow.org:9000"
-//var startBlockHeight uint64 = 59789556
-//var endBlockHeight uint64 = 59789558
-
-var accessAddr = "access-001.mainnet23.nodes.onflow.org:9000"
-var startBlockHeight uint64 = 55114468
-var endBlockHeight uint64 = 55114470
+var accessAddr = "access-001.mainnet24.nodes.onflow.org:9000"
+var startBlockHeight uint64 = 65264620
+var endBlockHeight uint64 = 65264630
 
 func TestVerifyBlockHash(t *testing.T) {
 	// load mainnet config and get blocks exactly as state.go
@@ -64,21 +60,16 @@ func TestVerifyExecutionResultHash(t *testing.T) {
 			sealedResults[string(seal.BlockId)] = string(seal.ResultId)
 		}
 		var resultID flow.Identifier
-		var resultIDV5 flow.Identifier
 		exec, ok := convertExecutionResult(block.Id, blockHeight, execResult)
 		if ok {
 			resultID = deriveExecutionResult(spork, exec)
 		}
-		execV5, okV5 := convertExecutionResultV5(block.Id, blockHeight, execResult)
-		if okV5 {
-			resultIDV5 = deriveExecutionResultV5(execV5)
-		}
-		if !ok && !okV5 {
+		if !ok {
 			require.Fail(t, "unable to covert from either hash")
 		}
 		sealedResult, foundOk := sealedResults[string(block.Id)]
 		if foundOk {
-			if string(resultID[:]) != sealedResult && string(resultIDV5[:]) != sealedResult {
+			if string(resultID[:]) != sealedResult {
 				require.Fail(t, "target error")
 			}
 		}
@@ -149,12 +140,11 @@ func TestDeriveEventsHash(t *testing.T) {
 func createSpork(ctx context.Context) (*config.Spork, error) {
 	addr := accessAddr
 	pool := access.New(ctx, []access.NodeConfig{{Address: addr}}, nil)
-	//chain := &config.Chain{Network: "canary"}
 	chain := &config.Chain{Network: "mainnet"}
 	return &config.Spork{
-		Version:     5,
+		Version:     6,
 		Chain:       chain,
 		AccessNodes: pool,
-		RootBlock:   55114467,
+		RootBlock:   65264619,
 	}, nil
 }
