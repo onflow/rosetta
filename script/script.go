@@ -50,6 +50,28 @@ var CreateProxyAccount string
 //go:embed cadence/scripts/get-balances.cdc
 var GetBalances string
 
+// GetBalancesBasic defines the template for the read-only transaction script
+// that returns the balance of an account's default FLOW vault.
+//
+//go:embed cadence/scripts/get-balances-basic.cdc
+var GetBalancesBasic string
+
+// GetProxyNonce defines the template for the read-only transaction script that
+// returns a proxy account's sequence number, i.e. the next nonce value for its
+// FlowColdStorageProxy Vault.
+//
+// If the account isn't a proxy account, i.e. doesn't have a
+// FlowColdStorageProxy Vault, then it will return -1.
+//
+//go:embed cadence/scripts/get-proxy-nonce.cdc
+var GetProxyNonce string
+
+// GetProxyPublicKey defines the template for the read-only transaction script
+// that returns a proxy account's public key.
+//
+// If the account isn't a proxy account, i.e. doesn't have a
+// FlowColdStorageProxy Vault, then it will return the empty string.
+//
 //go:embed cadence/scripts/get-proxy-public-key.cdc
 var GetProxyPublicKey string
 
