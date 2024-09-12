@@ -18,14 +18,14 @@
     "port": 8080,
     "spork_seal_tolerance": 600,
     "sporks": {
-        "50": {
+        "51": {
             "access_nodes": [
                 {
                     "address": "access.devnet.nodes.onflow.org:9000"
                 }
             ],
-            "root_block": 185185854,
-            "version": 6
+            "root_block": 211176670,
+            "version": 7
         }
     }
 }
