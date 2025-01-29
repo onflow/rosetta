@@ -1,6 +1,6 @@
 module github.com/onflow/rosetta
 
-go 1.23.5
+go 1.23
 
 require (
 	github.com/coinbase/rosetta-sdk-go v0.8.9
