@@ -10,7 +10,7 @@ import (
 	"github.com/onflow/cadence"
 	"github.com/onflow/cadence/encoding/ccf"
 	jsoncdc "github.com/onflow/cadence/encoding/json"
-	_ "github.com/onflow/cadence/runtime/stdlib" // imported for side-effects only
+	_ "github.com/onflow/cadence/stdlib" // imported for side-effects only
 	"github.com/onflow/crypto"
 	"github.com/onflow/crypto/hash"
 	"github.com/onflow/flow-go/model/fingerprint"
