@@ -358,7 +358,7 @@ config file:
     mode. During offline mode, only certain Rosetta API endpoints are
     functional.
 
-* `network: "mainnet" | "testnet" | "previewnet" | "localnet"`
+* `network: "mainnet" | "testnet" | "localnet"`
 
   * This defines the specific Flow chain that is being used.
 
