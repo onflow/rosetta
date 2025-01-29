@@ -27,6 +27,3 @@ integration-test-cleanup:
 
 integration-test:
 	python3 integration_test.py
-
-previewnet-integration-test:
-	python3 previewnet_integration_test.py
