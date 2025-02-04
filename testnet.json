@@ -23,10 +23,19 @@
         "51": {
             "access_nodes": [
                 {
-                    "address": "access.testnet.nodes.onflow.org:9000"
+                    "address": "access-001.devnet51.nodes.onflow.org:9000"
                 }
             ],
             "root_block": 211176670,
+            "version": 7
+        },
+        "52": {
+            "access_nodes": [
+                {
+                    "address": "access-001.devnet52.nodes.onflow.org:9000"
+                }
+            ],
+            "root_block": 218215349,
             "version": 7
         }
     }
