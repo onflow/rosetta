@@ -9,7 +9,6 @@ WORKDIR /app
 RUN cd /app && mkdir -p src
 COPY . /app/src/rosetta-flow
 RUN cd /app/src/rosetta-flow && go mod download -x
-RUN cd /app/src/rosetta-flow && ./environ/build-relic.py
-RUN cd /app/src/rosetta-flow && go build -tags relic -o server cmd/server/server.go
+RUN cd /app/src/rosetta-flow && go build -o server cmd/server/server.go
 
 CMD ["/app/src/rosetta-flow/server", "/app/src/rosetta-flow/mainnet.json"]
