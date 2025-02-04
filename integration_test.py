@@ -140,6 +140,7 @@ def setup_rosetta():
     subprocess.run(["make"], stdout=subprocess.PIPE)
     _ = input("Please start rosetta with the localnet config file $./server localnet.json\n")
 
+# Deprecated after move to Makefile
 def seed_contract_accounts():
     with open('account-keys.csv', "r+") as file_object:
         reader = csv.reader(file_object)

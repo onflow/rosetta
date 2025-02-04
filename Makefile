@@ -18,7 +18,6 @@ go-build:
 
 .PHONY: gen-originator-account
 gen-originator-account:
-	set -e; \
 	KEYS=$$(go run ./cmd/genkey/genkey.go -csv); \
 	PUBLIC_FLOW_KEY=$$(echo $$KEYS | cut -d',' -f1); \
 	PUBLIC_ROSETTA_KEY=$$(echo $$KEYS | cut -d',' -f2); \
@@ -41,6 +40,15 @@ gen-originator-account:
 	}' "${FLOW_JSON}" > flow.json.tmp && mv flow.json.tmp "${FLOW_JSON}" || { echo "Failed to update flow.json with jq"; exit 1; }; \
     echo "$(ACCOUNT_NAME),$$KEYS,$$address" >> $(ACCOUNT_KEYS_FILENAME); \
 	echo "Updated $(FLOW_JSON) and $(ACCOUNT_KEYS_FILENAME)";
+
+.PHONY: fund-originator-accounts
+fund-originator-accounts:
+	set -e; \
+	while IFS=',' read -r col1 col2 col3 col4 address; do \
+		address=$$(echo $$address | xargs); \
+		echo "Seeding account with address: $$address"; \
+		flow transactions send script/cadence/transactions/basic-transfer.cdc $$address 100.0 $(FLOW_CLI_FLAGS); \
+	done < account-keys.csv
 
 .PHONY: build
 build: go-build
