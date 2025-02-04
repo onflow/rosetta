@@ -29,9 +29,10 @@ localnet_const = {
 	}
 }
 
+signer_account = "localnet-service-account"
 number_of_contract_accounts = 2
-localnet_flags = ['-n', 'localnet']
-service_account_flags = ['-f', 'flow.json', '--signer', 'localnet-service-account']
+localnet_flags = ['-n', 'localnet', '-f', 'script/flow.json']
+service_account_flags = ['--signer', signer_account]
 rosetta_host_url = "http://127.0.0.1:8080"
 
 ######################################################################################
@@ -72,7 +73,7 @@ def init_flow_json():
     with open('flow.json', 'w') as json_file:
         json.dump(localnet_const, json_file, indent=4)
 
-
+# Deprecated after move to Makefile
 def gen_contract_account(account_name):
     public_flow_key, public_rosetta_key, private_key = gen_account_keys()
 
@@ -112,7 +113,7 @@ def gen_contract_account(account_name):
     # Open flow.json in read and write mode and load its content as a JSON object.
     # Add the new account to the JSON object under the key specified by account_name.
     # Write back the modified JSON object to the file and truncate any remaining content.
-    with open('flow.json', "r+") as json_file:
+    with open('script/flow.json', "r+") as json_file:
         data = json.load(json_file)
         data["accounts"][account_name] = contract_account_value
         json_file.seek(0)
@@ -144,7 +145,7 @@ def seed_contract_accounts():
         reader = csv.reader(file_object)
         for row in reader:
             address = row[-1]
-            seed_cmd = "flow transactions send script/cadence/transactions/basic-transfer.cdc " + address + " 100.0 --signer localnet-service-account"
+            seed_cmd = "flow transactions send script/cadence/transactions/basic-transfer.cdc " + address + " 100.0 --signer " + signer_account
             cmds = seed_cmd.split(" ") + localnet_flags
             result = subprocess.run(cmds, stdout=subprocess.PIPE)
 
@@ -153,7 +154,7 @@ def seed_contract_accounts():
 ### Helper Functions
 ######################################################################################
 
-
+# Deprecated after move to Makefile
 def gen_account_keys():
     gen_key_cmd = "go run ./cmd/genkey/genkey.go"
     result = subprocess.run(gen_key_cmd.split(" "), stdout=subprocess.PIPE)
@@ -163,6 +164,7 @@ def gen_account_keys():
     private_key = keys[2].split(" ")[-1]
     return (public_flow_key, public_rosetta_key, private_key)
 
+# Deprecated after move to Makefile
 def get_account_keys(account):
     with open("account-keys.csv") as search:
         for line in search:
@@ -179,7 +181,6 @@ def request_router(target_url, body):
 ######################################################################################
 ### Rosetta Construction Functions
 ######################################################################################
-
 
 def rosetta_create_account(root_originator, root_originator_name="root-originator-account-1", i=0):
     public_flow_key, public_rosetta_key, new_private_key = gen_account_keys()
@@ -463,24 +464,24 @@ def submit_transaction(signed_tx):
 
 
 def main():
-    clone_flowgo_cmd()
-    build_flow()
-    init_localnet()
-    init_flow_json()
-    for i in range(1,number_of_contract_accounts+1):
-        account_str = "root-originator-account-" + str(i)
-        gen_contract_account(account_str)
-        deploy_contracts(account_str)
-    setup_rosetta()
+    # clone_flowgo_cmd()
+    # build_flow()
+    # init_localnet()
+    # init_flow_json()
+    # for i in range(1,number_of_contract_accounts+1):
+    #     account_str = "root-originator-account-" + str(i)
+    #     gen_contract_account(account_str)
+        # deploy_contracts(account_str)
+    # setup_rosetta()
     seed_contract_accounts()
 
     _, _, _, root_address = get_account_keys("root-originator-account-1")
-    print("root_address" + root_address)
-    # rosetta_create_account(root_address, "root-originator-account-1")
+    print("root_address: " + root_address)
+    rosetta_create_account(root_address, "root-originator-account-1")
     # rosetta_create_proxy_account(root_address, "root-originator-account-1")
-    # _, _, _, new_address = get_account_keys("root-originator-account-1-create_account")
+    _, _, _, new_address = get_account_keys("root-originator-account-1-create_account")
 
-    # rosetta_transfer(root_address, new_address, 50)
+    rosetta_transfer(root_address, new_address, 50)
     # _, _, _, new_proxy_address = get_account_keys("root-originator-account-1-create_proxy_account")
     # rosetta_transfer(root_address, new_proxy_address, 50)
     # _, _, _, flow_account_address = get_account_keys("flow-account")

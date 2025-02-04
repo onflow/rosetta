@@ -1,21 +1,59 @@
 {
-	"emulators": {
-		"default": {
-			"port": 3569,
-			"serviceAccount": "emulator-account"
-		}
-	},
-	"contracts": {},
-	"networks": {
-		"emulator": "127.0.0.1:3569",
-		"mainnet": "access.mainnet.nodes.onflow.org:9000",
-		"testnet": "access.devnet.nodes.onflow.org:9000"
-	},
-	"accounts": {
-		"emulator-account": {
-			"address": "f8d6e0586b0a20c7",
-			"key": "91a22fbd87392b019fbe332c32695c14cf2ba5b6521476a8540228bdf1987068"
-		}
-	},
-	"deployments": {}
+  "emulators": {
+    "default": {
+      "port": 3569,
+      "serviceAccount": "emulator-account"
+    }
+  },
+  "contracts": {},
+  "networks": {
+    "emulator": "127.0.0.1:3569",
+    "testing": "127.0.0.1:3569",
+    "localnet": "192.168.1.186:4001",
+    "mainnet": "access.mainnet.nodes.onflow.org:9000",
+    "testnet": "access.devnet.nodes.onflow.org:9000"
+  },
+  "accounts": {
+    "emulator-account": {
+      "address": "f8d6e0586b0a20c7",
+      "key": {
+        "type": "hex",
+        "index": 0,
+        "signatureAlgorithm": "ECDSA_P256",
+        "hashAlgorithm": "SHA3_256",
+        "privateKey": "04264ea6342c0dae476c7b7d327e8ba369e605db8314758f7af7bab790ec787b"
+      }
+    },
+    "localnet-service-account": {
+      "address": "f8d6e0586b0a20c7",
+      "key": {
+        "type": "hex",
+        "index": 0,
+        "signatureAlgorithm": "ECDSA_P256",
+        "hashAlgorithm": "SHA2_256",
+        "privateKey": "8ae3d0461cfed6d6f49bfc25fa899351c39d1bd21fdba8c87595b6c49bb4cc43"
+      }
+    },
+    "root-originator-account-1": {
+      "address": "1beecc6fef95b62e",
+      "key": {
+        "type": "hex",
+        "index": 0,
+        "signatureAlgorithm": "ECDSA_secp256k1",
+        "hashAlgorithm": "SHA3_256",
+        "privateKey": "f0cd40495618388f333147b8b6b6be8ef5b279aed520ffa256fcb2a73cba6227"
+      }
+    },
+    "root-originator-account-2": {
+      "address": "ff8975b2fe6fb6f1",
+      "key": {
+        "type": "hex",
+        "index": 0,
+        "signatureAlgorithm": "ECDSA_secp256k1",
+        "hashAlgorithm": "SHA3_256",
+        "privateKey": "4dd3d8b317934a4101c15bd1944e89f77d7062a4ad1f4b24d39191f036c9f7bd"
+      }
+    }
+  },
+  "deployments": {}
 }
