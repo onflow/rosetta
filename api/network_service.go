@@ -29,7 +29,7 @@ func (s *Server) NetworkOptions(ctx context.Context, r *types.NetworkRequest) (*
 			OperationTypes: opTypes,
 		},
 		Version: &types.Version{
-			MiddlewareVersion: types.String(version.FlowRosetta),
+			MiddlewareVersion: types.String(version.FlowRosetta), // appears not to be used
 			NodeVersion:       version.Flow,
 			RosettaVersion:    types.RosettaAPIVersion,
 		},
