@@ -1,4 +1,4 @@
-This repo implements the [Rosetta API] for the [Flow blockchain].
+This repo implements the [Rosetta API](https://docs.cdp.coinbase.com/mesh/docs/api-reference) for the [Flow blockchain](https://developers.flow.com/).
 
 ## Architecture
 
@@ -76,12 +76,28 @@ This repo implements the [Rosetta API] for the [Flow blockchain].
 
 ## Overview
 
+Rosetta is an interoperability standard developed by Coinbase which was required to integrate any new blockchain to 
+Coinbase for fiat on-off ramps and other functionality that Coinbase offers. Rosetta has since been renamed to 
+[Mesh](https://docs.cdp.coinbase.com/mesh/docs/api-reference) and continues to honor the APIs originally used in Rosetta.
+
+Rosetta's design is such that all aspects of integration must be handled through the implementation of the Rosetta standard which 
+models the full lifecycle of blockchain integration. The implication of this is that all interactions with Flow are expected
+to be handled through Rosetta. Furthermore, due to EVM-centric historical design assumptions made by Rosetta certain additional 
+requirements must be enforced to ensure correct operation. The most important requirement is that all accounts which Rosetta 
+tracks are ones initially created by a root originator account owned by Coinbase. Sub-account creation is handled through the
+Rosetta Construction API using only the configured originator accounts. This allows Rosetta to track only those specific accounts 
+rather than tracking all accounts on-chain (which it would normally do). 
+
+### Design 
+
 Flow Rosetta consists of two primary systems:
 
-* The State Indexer:
+* The State Indexer exists to track the entire history of Coinbase created accounts and their value movements. This is because
+the Flow Access API doesn't support an EVM JSON-RPC equivalent of `eth_getBalance(address)` while Rosetta assumes and requires
+a `getBalance` equivalent to function. 
 
   * Uses the Access API servers to get the relevant block data and events for
-    each of the configured `sporks`.
+    each of the configured network segments (aka, spork - a network upgrade requiring downtime).
 
   * After establishing a data integrity chain from a trusted starting point,
     processes the events for sealed blocks, and stores the inferred state
@@ -101,7 +117,7 @@ Flow Rosetta consists of two primary systems:
   * Spins up concurrent prefetch workers who cache various Access API calls in
     advance of the main block processing loop.
 
-* The Rosetta API Server:
+* The Rosetta API Server: implements the Rosetta standard interfaces 
 
   * This runs an HTTP server that implements various endpoints of the Rosetta
     API.
@@ -172,22 +188,45 @@ The code is structured into the following top-level directories:
 
 * `version` — Defines the constants for the Flow and Flow Rosetta versions.
 
-## Shortcomings
+### Config files
 
-This implementation has various shortcomings:
+The config files in the root of the repo are provided  for reference and testing. Since Coinbase runs Rosetta 
+operationally the contents of `testnet.json` and `mainnet.json` likely do not reflect the actual configs used on 
+those networks.
+
+### FlowColdStorageProxy contract
+
+The `FlowColdStorageProxy` contract in `scripts/contracts` is not currently deployed or used by Coinbase in either
+testnet or mainnet. This was developed in preparation for integration with a Coinbase feature, the process for 
+which was never completed. 
+
+## Non-conformance
+
+A standard Rosetta implementation would typically track all accounts/address and their corresponding value movements
+on-chain, from genesis with no exceptions. However, incompatibilities between Rosetta and Flow's models and APIs resulted 
+in a reduced scope of on-chain account tracking. 
 
 * We use the events generated from Flow transactions to infer changes in account
   balances. Since the events on Flow do not fully track the movement of
-  resources on-chain, these events will not 100% match the on-chain balance
-  changes.
+  resources on-chain.
+
+A standard Rosetta would reconcile all balances, across all accounts on-chain from genesis.
 
 * In order to support balance reconciliation by `rosetta-cli check:data`, we
   only track balance changes for accounts created by the configured
   `originators` or any of its "descendants".
 
+Rosetta assumptions regarding auditability of accounts mean that only the most basic, standard operations are permitted
+to be performed on Coinbase created Cadence user account vaults. This is possible because users cannot take custody of 
+the Flow account which Coinbase uses on their behalf.
+
 * For our balance tracking of these accounts to remain valid, they must never be
   used in any "non-standard" transactions, e.g. moving FLOW to non-default Vault
   resources, splitting a withdrawal across multiple deposits, etc.
+
+Rosetta assumes that networks infrequently release breaking changes to a network requiring downtime and a halt in Rosetta
+functionality. This implementation needs to be configured with the required network spork segments and will handle retrieval
+of historical data from those transparently. Sporks frequency as of Q1 2025 is expected to be once yearly only. 
 
 * Since Flow effectively hard forks every spork, the Access API may serve block
   data from an old spork that is then not part of the next spork. If the Rosetta
@@ -199,18 +238,13 @@ This implementation has various shortcomings:
   consumed the previously indexed data from the Rosetta Node, these will also
   need to be reset.
 
-* Since the last few blocks in a spork don't have corresponding seals with
-  execution results, the events we receive for those blocks cannot be verified
-  through the Access API. It is therefore possible for us to process invalid
-  data for those blocks.
-
 * If the Access API servers aren't properly maintained and configured for
   individual sporks, then it could result in data availability issues.
 
-* It needs to be actively reconfigured and restarted with every new spork. Some
-  of this data can be derived from the [sporks.json] data that is maintained by
-  Dapper Labs. If there are any delays or inaccuracies in those updates, this
-  would result in downtime.
+* Rosetta configuration JSONs must be actively reconfigured and restarted with every new spork. Flow's 
+  [sporks.json](https://github.com/onflow/flow/blob/master/sporks.json) serves as the canonical resource for spork 
+  versioning on Flow. Its important that changes to spork versions are included in the Rosetta config for the 
+  environment delays or inaccuracies in thoseupdates, this would result in downtime.
 
 * Rosetta assumes that a transaction hash uniquely identifies a transaction
   within a block. Unfortunately, in Flow, the same transaction hash can be
@@ -249,11 +283,6 @@ make go-build
 
 ---
 
-_**Note:**_ Since [flow-go] can't be built like a normal Go module, you need to first
-compile a [relic build] by running: `./environ/build-relic.py`. This is covered by the `make build` target.
-
-And then use `-tags relic` when building or running `cmd/server`.
-
 ## Environment Variables
 
 The Flow Rosetta `cmd/server` supports configuration of certain aspects via the
@@ -282,7 +311,7 @@ following environment variables:
 
   * This should never be turned on in production.
 
-## JSON Config File
+## Rosetta JSON Config File
 
 The Flow Rosetta `cmd/server` supports the following fields within the JSON
 config file:
@@ -533,7 +562,11 @@ The `SeedNodeConfig` supports the following fields:
 
   * This defines the hex-encoded ECDSA P-256 public key for the Access Node.
 
-## FlowColdStorageProxy Contract
+## Upgrading, testing and validating Rosetta updates
+
+See `/scripts/README.md`
+
+## FlowColdStorageProxy Contract - not currently in use
 
 Transactions in Flow currently expire after 600 blocks — roughly about 10
 minutes. This can be problematic for offline signing of transactions, e.g. for
