@@ -1,118 +1,174 @@
-This directory contains the transaction scripts used by Flow Rosetta, and the
-code for our Proxy contract.
+This directory contains Cadence scripts and transactions used by Flow Rosetta.
 
-## Dev Guide
+# Rosetta Testing and Upgrade Validation Guide
 
-The following provides an overview of developing with [Cadence], Flow's smart
-contract language.
+This guide is to support the testing and validation of Rosetta for compatibility with the flow-go module dependency. This 
+Rosetta implementation integrates core, internal components from the flow-go repo subjecting Rosetta to upstream breaking changes.
 
-First, install Flow CLI:
+When using `emulator` or `localnet` it will be necessary to follow all steps. For 
+testnet or mainnet there are relatively less steps since originator accounts have already been created, are funded and 
+in active use. 
 
-```bash
-$ sh -ci "$(curl -fsSL https://storage.googleapis.com/flow-cli/install.sh)"
-```
+## Prerequisites 
 
-Init Flow CLI:
+If contracts, scripts or transactions are being changed in some way, it may be necessary to learn [Cadence](https://cadence-lang.org/), Flow's smart contract language.
 
-```bash
-$ flow init
-```
-
-Run the emulator:
+### Install Flow CLI
 
 ```bash
-$ flow emulator --contracts --persist --verbose=true
+sh -ci "$(curl -fsSL https://storage.googleapis.com/flow-cli/install.sh)"
+flow version
 ```
 
-Note down the addresses for the `FlowToken` and `FungibleToken` contracts, and
-update the corresponding import addresses used in `FlowColdStorageProxy.cdc`.
+### Check python3 and dependency installation
 
-Generate a public/private keypair by running `cmd/genkey`, e.g.
+`python3` is used for testing with one external dependency
 
 ```bash
-$ go run ../cmd/genkey/genkey.go
-Public Key (Flow Format): 51eda39f7b5f2da2ebfdb23d7645a6ebf334e49a644e2e736f89d8aefc24994772cd228c26b326fd42547dc799fe81f5f05c4286881c1ce75a81b8ecaa946d42
-Public Key (Rosetta Format): 0251eda39f7b5f2da2ebfdb23d7645a6ebf334e49a644e2e736f89d8aefc249947
-Private Key: dd04d88ef5f2e4025005a953de221b07bbab1937554a44a5ea9052b98be9c93d
+pip install click
 ```
 
-Create an account with that key on the emulator:
+### Configure target environment
+
+Before starting ensure that variable constants in the project `Makefile` are updated to reflect the target environment and 
+desired configuration.
+
+## First time environment setup
+
+When testing on `emulator` or `localnet` it will be required to bootstrap and fund originator accounts. If testing 
+a live network first time setup steps are only required if the network is new. 
+
+If using `emulator` it should be started.
 
 ```bash
-$ flow accounts create --sig-algo ECDSA_secp256k1 --key 51eda39f7b5f2da2ebfdb23d7645a6ebf334e49a644e2e736f89d8aefc24994772cd228c26b326fd42547dc799fe81f5f05c4286881c1ce75a81b8ecaa946d42
-Transaction ID: aa4160d3a2a5882b73f4817c58c0b2c7bc61eec68eba0510c1392a3fd01796b1
-Address	 0x01cf0e2f2f715450
-Balance	 0.00100000
+flow emulator --contracts --persist --verbose=true
 ```
+Be aware that when using the `--persist` flag the emulator will preserve state between starts locally in `flowdb/` directory.
+If the `flowdb/` directory is deleted for a full state reset then bootstrapping will need to be run again
 
-Update the `flow.json` config with a new `contract-account` value in the
-`accounts` section using the generated private key and created account address:
+### Running localnet
 
-```json
-"contract-account": {
-    "address": "01cf0e2f2f715450",
-    "key": {
-        "type": "hex",
-        "index": 0,
-        "signatureAlgorithm": "ECDSA_secp256k1",
-        "hashAlgorithm": "SHA3_256",
-        "privateKey": "dd04d88ef5f2e4025005a953de221b07bbab1937554a44a5ea9052b98be9c93d"
-    }
-}
-```
-
-Deploy the contract:
+If using `localnet` it will need to be started. Localnet is a full Flow network with 9 containers, each one representing an instance 
+of one of the Flow node types used in the network. These are automatically built into images and run as containers on Docker. Detailed guidance on 
+running `localnet` is provided in the [README](https://github.com/onflow/flow-go/tree/master/integration/localnet). Assuming that a specific 
+release version is being used, you will need to clone `flow-go` and checkout that version.
 
 ```bash
-$ flow accounts add-contract --signer contract-account FlowColdStorageProxy ./FlowColdStorageProxy.cdc
-Transaction ID: f536cd544068cb6976e0226b4146d53b7d3d4aa94e4359df5c1fca66f29eba9a
-Contract 'FlowColdStorageProxy' deployed to the account '01cf0e2f2f715450'.
+git clone git@github.com:onflow/flow-go.git
+cd flow-go
+git checkout tags/v0.37.26  ## change as required
 ```
 
-If there are any issues, update the contract for changes:
+Keep the version number used to hand since it will need to be matched with the `go.mod` flow-go dependency used in Rosetta later on. 
+
+### Bootstrap originator accounts
+
+Create one or more originator accounts. You will need to set a unique `ACCOUNT_NAME` as an env var for each account created. It may 
+be necessary to update the configured ${FLOW_JSON} with the appropriate service [account details](https://developers.flow.com/tools/flow-cli/flow.json/configuration#accounts) 
+for your target environment before proceeding.
 
 ```bash
-$ flow accounts update-contract --signer contract-account FlowColdStorageProxy ./FlowColdStorageProxy.cdc
-Transaction ID: f536cd544068cb6976e0226b4146d53b7d3d4aa94e4359df5c1fca66f29eba9a
-Contract 'FlowColdStorageProxy' deployed to the account '01cf0e2f2f715450'.
+ACCOUNT_NAME=root-originator-1 make gen-originator-account
 ```
+This target undertakes the following for the target environment:
 
-To test out Cadence transaction scripts, place the scripts into files and submit
-them with any arguments:
+* Generates public and private key pairs for use by Flow and Rosetta 
+* Uses the generated public key to create a new Flow account to serve as an originator
+* Updates ${FLOW_JSON} with the new account and private key JSON block
+* Adds the new address to the originators list in ${ROSETTA_ENV} config JSON
+* Updates ${ACCOUNT_KEYS_FILENAME} with a single CSV row entry with the following columns
+  * `name, Flow public key, Rosetta public key, Flow private key, account identifier`
+
+### Fund accounts
+
+Use this target to fund the newly created originator accounts from the network service account. 
 
 ```bash
-$ flow transactions send --network emulator <file.cdc> [<args> ...]
-Transaction ID: b4bf97253c590cb7b4118870efbddb206e776f5fa3dc277281fef493b1445a5c
+make fund-accounts
 ```
 
-## Upgrade Notes for the Secure Cadence Release
+* Iterates row entries in ${ACCOUNT_KEYS_FILENAME} and funds 100 FLOW to each one
 
-To validate the code for the [breaking changes introduced by the Secure Cadence
-release], first install Flow CLI for the Secure Cadence Emulator:
+
+## Testing, validation and upgrade sequence
+
+Once the environment is bootstrapped with funded originator accounts then it's possible to start testing. It's advisable 
+to start with a confirmed baseline, namely ensuring that the Rosetta version you are starting with works with the `flow-go` 
+version currently on testnet/mainnet. 
+
+1. Baseline test of main branch Rosetta against current emulator
+2. Baseline test of main branch Rosetta against testnet
+3. Update `flow-go` and other required dependencies which also need updating
+4. Build, deploy and start `localnet` using the same versions of `flow-go` etc
+5. Test and validate Rosetta against `localnet`
+6. Release new Rosetta version
+7. Coordinate with Coinbase to deploy new version during scheduled network upgrade
+
+### Check Environment before testing
+
+The remainder of this guide assumes that the required bootstrapping of the target environment is done and that either
+the emulator, or localnet, are running (unless testing a live network). If you have previously run Rosetta and encounter this 
+error on startup:
+
+```go
+ERROR   Unexpected parent hash found for block 8345eb03aa4959d3652fb485e3a91f981672276973ecee9b9f2f43ac0cc55aa9 at height 1: expected c77c642ceaa5b3e4b3265da14ead25361c9cd903652b34fc022494fc73f2177b, got 5b105616db0b3c75a7efc4e97ae09d30b48cb0d679221ba9cbdcb7aa29c86dcf
+```
+
+Delete `data/` folder which stores state from previous runs and will cause this error to occur when bringing up Rosetta server:
+
+### Build Rosetta
 
 ```bash
-$ sh -ci "$(curl -fsSL https://raw.githubusercontent.com/onflow/flow-cli/master/install.sh)" -- v0.33.2-sc-m6
+make build
 ```
 
-Install Cadence Analyzer:
+### Start Rosetta
 
 ```bash
-$ sh -ci "$(curl -fsSL https://storage.googleapis.com/flow-cli/install-cadence-analyzer.sh)"
+./server localnet.json  ## use appropriate Rosetta JSON configuration for your target environment
 ```
 
-To validate deployed contracts code, run `cadence-analyzer` on the address where
-the contract was deployed:
+If successful it should log something like this
 
 ```bash
-$ cadence-analyzer -network emulator -address 0x01cf0e2f2f715450
+➜   ./server localnet.json
+2025-02-05T12:42:02.531-0800	INFO	[cache/badger] All 0 tables opened in 0s
+2025-02-05T12:42:02.542-0800	INFO	[cache/badger] Discard stats nextEmptySlot: 0
+2025-02-05T12:42:02.542-0800	INFO	[cache/badger] Set nextTxnTs to 0
+2025-02-05T12:42:02.578-0800	INFO	Running localnet in online mode
+2025-02-05T12:42:02.837-0800	INFO	Genesis block set to block b21f01cd3bedc3fb3f716a466c05d4c384169a11091436db6f080afa087fb2f8 at height 1
+2025-02-05T12:42:02.932-0800	INFO	Running background loop to validate account balances
+2025-02-05T12:42:02.932-0800	INFO	Starting Rosetta Server on port 8080
+2025-02-05T12:42:03.192-0800	INFO	Retrieved block 20dd925a750399493cf7455f199c32c952e8010a6c0b4424dba00a193fa18e44 at height 2
+2025-02-05T12:42:03.370-0800	INFO	Retrieved block 7a4596450e5802ae58407fdf09d429ba74c24fdc146c53cb8d184a678d9f4e7a at height 3
+...
 ```
+Rosetta will continue syncing blocks from Flow Access nodes until it has caught up, which may take some time on long-lived networks. 
 
-To validate transaction scripts, submit transactions with specific scripts, and
-then run `cadence-analyzer` on the submitted transaction IDs:
+Before continuing to test you must wait for Rosetta to confirm it has reached the tip: 
 
 ```bash
-$ cadence-analyzer -network emulator -transaction b4bf97253c590cb7b4118870efbddb206e776f5fa3dc277281fef493b1445a5c
+2025-02-05T17:17:33.701-0800	INFO	Indexer is close to tip
 ```
 
-[breaking changes introduced by the Secure Cadence release]: https://forum.onflow.org/t/breaking-changes-coming-with-secure-cadence-release/3052
-[Cadence]: https://docs.onflow.org/cadence/
+### Create originator derived accounts
+
+If this is the first time testing in this environment, or if the Flow environment has been reset, you will need to create at least two originator 
+derived accounts. These _must_ be created via Rosetta rather than through the `flow-cli` or other non Rosetta transactions.
+
+```bash
+NEW_ACCOUNT_NAME=derived-account-1 ORIGINATOR_NAME=root-originator-1 make rosetta-create-sub-account
+```
+
+### Transfer funds
+
+Now we use Rosetta to trigger a transfer into the newly created derived account.
+```bash
+RECIPIENT=derived-account-1 ORIGINATOR_NAME=root-originator-1 make rosetta-transfer-funds
+```
+
+## Flow-go update guidance
+
+In general
+
+go get github.com/onflow/flow-go@master
