@@ -10,12 +10,13 @@ jobs:
     steps:
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install wabt
-      - uses: actions/setup-go@v3
+      - name: Checkout repo
+        uses: actions/checkout@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
-      - name: Checkout repo
-        uses: actions/checkout@v2
       - name: Make go deps
         run: make deps
       - name: Build
