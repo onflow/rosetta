@@ -162,7 +162,7 @@ NEW_ACCOUNT_NAME=derived-account-1 ORIGINATOR_NAME=root-originator-1 make rosett
 
 ### Transfer funds
 
-Now we use Rosetta to trigger a transfer into the newly created derived account.
+Now we use Rosetta to trigger a transfer into the newly created derived account. 
 ```bash
 RECIPIENT=derived-account-1 ORIGINATOR_NAME=root-originator-1 make rosetta-transfer-funds
 ```

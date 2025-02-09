@@ -121,7 +121,6 @@ def submit_transaction(rosetta_host_url, signed_tx):
 @click.argument('new_account_public_rosetta_key', envvar='NEW_ACCOUNT_PUBLIC_ROSETTA_KEY', required=True)
 def rosetta_create_derived_account(rosetta_host_url, root_originator_address, root_originator_public_rosetta_key,
                                    root_originator_private_key, new_account_public_rosetta_key):
-    print("Enter create: " + root_originator_address + ", new: " + new_account_public_rosetta_key)
     transaction = "create_account"
     metadata = {"public_key": new_account_public_rosetta_key}
     operations = [
@@ -134,7 +133,6 @@ def rosetta_create_derived_account(rosetta_host_url, root_originator_address, ro
         }
     ]
     preprocess_response = preprocess_transaction(rosetta_host_url, root_originator_address, operations)
-    print(preprocess_response)
     metadata_response = metadata_transaction(rosetta_host_url, preprocess_response["options"])
     payloads_response = payloads_transaction(rosetta_host_url, operations, metadata_response["metadata"]["protobuf"])
     hex_bytes = payloads_response["payloads"][0]["hex_bytes"]
@@ -145,19 +143,22 @@ def rosetta_create_derived_account(rosetta_host_url, root_originator_address, ro
     combine_response = combine_transaction(rosetta_host_url, unsigned_tx, root_originator_address, hex_bytes,
                                            root_originator_public_rosetta_key, signed_tx)
     submit_transaction_response = submit_transaction(rosetta_host_url, combine_response["signed_transaction"])
-    return submit_transaction_response["transaction_identifier"]["hash"]
+    print(submit_transaction_response["transaction_identifier"]["hash"])
 
 
 @click.command()
 @click.argument('rosetta_host_url', envvar='ROSETTA_HOST_URL', required=True)
-@click.argument('root_originator_address', envvar='ROOT_ORIGINATOR_ADDRESS', required=True)
-@click.argument('root_originator_public_rosetta_key', envvar='ROOT_ORIGINATOR_PUBLIC_ROSETTA_KEY', required=True)
-@click.argument('root_originator_private_key', envvar='ROOT_ORIGINATOR_PRIVATE_KEY', required=True)
-@click.argument('recipient_address', envvar='RECIPIENT', required=True)
+@click.argument('payer_address', envvar='PAYER_ADDRESS', required=True)
+@click.argument('payer_public_key', envvar='PAYER_PUBLIC_KEY', required=True)
+@click.argument('payer_private_key', envvar='PAYER_PRIVATE_KEY', required=True)
+@click.argument('recipient_address', envvar='RECIPIENT_ADDRESS', required=True)
 @click.argument('amount', envvar='AMOUNT', required=True)
-def rosetta_transfer_funds(rosetta_host_url, root_originator_address, root_originator_public_rosetta_key,
-                           root_originator_private_key, recipient_address, amount, i=0):
+def rosetta_transfer_funds(rosetta_host_url, payer_address, payer_public_key,
+                           payer_private_key, recipient_address, amount, i=0):
     transaction = "transfer"
+    amount = float(amount)
+    amount_sent = str(-1 * int(amount * 10 ** 7))
+    amount_received = str(int(amount * 10 ** 7))
     operations = [
         {
             "type": transaction,
@@ -165,14 +166,14 @@ def rosetta_transfer_funds(rosetta_host_url, root_originator_address, root_origi
                 "index": i
             },
             "account": {
-                "address": root_originator_address
+                "address": payer_address
             },
             "amount": {
                 "currency": {
                     "decimals": 8,
                     "symbol": "FLOW"
                 },
-                "value": str(-1 * amount * 10 ** 7)
+                "value": amount_sent
             }
         },
         {
@@ -193,22 +194,22 @@ def rosetta_transfer_funds(rosetta_host_url, root_originator_address, root_origi
                     "decimals": 8,
                     "symbol": "FLOW"
                 },
-                "value": str(amount * 10 ** 7)
+                "value": amount_received
             }
         }
     ]
-    preprocess_response = preprocess_transaction(rosetta_host_url, root_originator_address, operations)
+    preprocess_response = preprocess_transaction(rosetta_host_url, payer_address, operations)
     metadata_response = metadata_transaction(rosetta_host_url, preprocess_response["options"])
     payloads_response = payloads_transaction(rosetta_host_url, operations, metadata_response["metadata"]["protobuf"])
     hex_bytes = payloads_response["payloads"][0]["hex_bytes"]
     unsigned_tx = payloads_response["unsigned_transaction"]
-    sign_tx_cmd = "go run cmd/sign/sign.go " + root_originator_private_key + " " + hex_bytes
+    sign_tx_cmd = "go run cmd/sign/sign.go " + payer_private_key + " " + hex_bytes
     result = subprocess.run(sign_tx_cmd.split(" "), stdout=subprocess.PIPE)
     signed_tx = result.stdout.decode('utf-8')[:-1]
-    combine_response = combine_transaction(rosetta_host_url, unsigned_tx, root_originator_address, hex_bytes,
-                                           root_originator_public_rosetta_key, signed_tx)
+    combine_response = combine_transaction(rosetta_host_url, unsigned_tx, payer_address, hex_bytes,
+                                           payer_public_key, signed_tx)
     submit_transaction_response = submit_transaction(rosetta_host_url, combine_response["signed_transaction"])
-    return submit_transaction_response["transaction_identifier"]["hash"]
+    print(submit_transaction_response["transaction_identifier"]["hash"])
 
 
 # CLI bindings
