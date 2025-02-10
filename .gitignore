@@ -9,3 +9,5 @@
 /.idea
 /server
 /script/node_modules/
+/imports
+/account-keys.csv

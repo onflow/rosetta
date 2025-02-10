@@ -8,7 +8,6 @@ enum Network {
     UNSPECIFIED_NETWORK = 0;
     MAINNET = 1;
     TESTNET = 2;
-    PREVIEWNET = 3;
 }
 
 // OperationType specifies the type of an operation within an indexed

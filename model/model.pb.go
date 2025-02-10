@@ -27,7 +27,6 @@ const (
 	Network_UNSPECIFIED_NETWORK Network = 0
 	Network_MAINNET             Network = 1
 	Network_TESTNET             Network = 2
-	Network_PREVIEWNET          Network = 3
 )
 
 // Enum value maps for Network.
@@ -36,13 +35,11 @@ var (
 		0: "UNSPECIFIED_NETWORK",
 		1: "MAINNET",
 		2: "TESTNET",
-		3: "PREVIEWNET",
 	}
 	Network_value = map[string]int32{
 		"UNSPECIFIED_NETWORK": 0,
 		"MAINNET":             1,
 		"TESTNET":             2,
-		"PREVIEWNET":          3,
 	}
 )
 

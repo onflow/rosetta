@@ -423,9 +423,6 @@ func (i *Indexer) indexLiveSpork(rctx context.Context, spork *config.Spork, last
 					)
 					continue
 				}
-				// NOTE(tav): Without using Consensus Follower, we're
-				// implicitly trusting the block seal returned by the Access
-				// API server. This is a major security risk.
 				if useConsensus {
 					blockID := flow.Identifier{}
 					copy(blockID[:], seal.BlockId)

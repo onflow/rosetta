@@ -1,33 +1,33 @@
 {
-    "cache": false,
-    "construction_access_nodes": [
-        {
-            "address": "127.0.0.1:4001"
-        }
-    ],
-    "contracts": {
-        "flow_cold_storage_proxy": "f8d6e0586b0a20c7",
-        "flow_fees": "912d5440f7e3769e",
-        "flow_token": "7e60df042a9c0868",
-        "fungible_token": "9a0766d93b6608b7"
-    },
-    "data_dir": "./data",
-    "disable_consensus_follower": true,
-    "network": "localnet",
-    "originators": [
-    ],
-    "port": 8080,
-    "spork_seal_tolerance": 10000,
-    "spork_synced_tolerance": 10,
-    "sporks": {
-        "19": {
-            "access_nodes": [
-                {
-                    "address": "127.0.0.1:4001"
-                }
-            ],
-            "root_block": 0,
-            "version": 6
-        }
+  "cache": false,
+  "construction_access_nodes": [
+    {
+      "address": "127.0.0.1:4001"
     }
+  ],
+  "contracts": {
+    "flow_cold_storage_proxy": "0000000000000000",
+    "flow_fees": "e5a8b7f23e8b548f",
+    "flow_token": "0ae53cb6e3f42a79",
+    "fungible_token": "ee82856bf20e2aa6"
+  },
+  "data_dir": "./data",
+  "disable_consensus_follower": true,
+  "network": "localnet",
+  "originators": [
+  ],
+  "port": 8080,
+  "spork_seal_tolerance": 10000,
+  "spork_synced_tolerance": 10,
+  "sporks": {
+    "19": {
+      "access_nodes": [
+        {
+          "address": "127.0.0.1:4001"
+        }
+      ],
+      "root_block": 0,
+      "version": 7
+    }
+  }
 }

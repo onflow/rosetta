@@ -2,6 +2,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 
@@ -9,12 +10,30 @@ import (
 )
 
 func main() {
+	// Define a flag for output format
+	csvOutput := flag.Bool("csv", false, "Output keys in CSV format")
+	flag.Parse()
+
+	// Generate private key
 	priv, err := secp256k1.GeneratePrivateKey()
 	if err != nil {
 		log.Fatalf("Failed to generate key: %s", err)
 	}
+
+	// Generate public keys
 	pub := priv.PubKey()
-	fmt.Printf("Public Key (Flow Format): %x\n", pub.SerializeUncompressed()[1:])
-	fmt.Printf("Public Key (Rosetta Format): %x\n", pub.SerializeCompressed())
-	fmt.Printf("Private Key: %x\n", priv.Serialize())
+	publicFlowKey := fmt.Sprintf("%x", pub.SerializeUncompressed()[1:])
+	publicRosettaKey := fmt.Sprintf("%x", pub.SerializeCompressed())
+	privateKey := fmt.Sprintf("%x", priv.Serialize())
+
+	// Output based on the flag
+	if *csvOutput {
+		// Output as a single line in CSV format
+		fmt.Printf("%s,%s,%s\n", publicFlowKey, publicRosettaKey, privateKey)
+	} else {
+		// Human-readable output
+		fmt.Printf("Public Key (Flow Format): %s\n", publicFlowKey)
+		fmt.Printf("Public Key (Rosetta Format): %s\n", publicRosettaKey)
+		fmt.Printf("Private Key: %s\n", privateKey)
+	}
 }
