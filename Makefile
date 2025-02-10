@@ -4,7 +4,7 @@ FLOW_JSON = script/flow.json
 FLOW_JSON_NETWORK = localnet
 FLOW_JSON_SIGNER = localnet-service-account
 FLOW_CLI_FLAGS = -n $(FLOW_JSON_NETWORK) -f $(FLOW_JSON) --signer $(FLOW_JSON_SIGNER)
-ROSETTA_ENV = localnet
+ROSETTA_ENV = testnet
 ROSETTA_HOST_URL = "http://127.0.0.1:8088"
 COMPILER_FLAGS := CGO_CFLAGS="-O2 -D__BLST_PORTABLE__"
 
@@ -39,7 +39,7 @@ gen-originator-account:
 	}' "${FLOW_JSON}" > flow.json.tmp && mv flow.json.tmp "${FLOW_JSON}" || { echo "Failed to update ${FLOW_JSON} with jq"; exit 1; }; \
 	jq --arg address "$$address" '.originators += [$$address]' "${ROSETTA_ENV}.json" > env.json.tmp && mv env.json.tmp "${ROSETTA_ENV}.json"; \
     echo "$(ACCOUNT_NAME),$$KEYS,0x$$address" >> $(ACCOUNT_KEYS_FILENAME); \
-	echo "Updated $(FLOW_JSON), ${ROSETTA_ENV}.json and $(ACCOUNT_KEYS_FILENAME)";
+	echo "Updated $(FLOW_JSON), $(ROSETTA_ENV).json and $(ACCOUNT_KEYS_FILENAME)";
 
 .PHONY: fund-accounts
 fund-accounts:
@@ -64,7 +64,7 @@ create-originator-derived-account:
 	ROOT_ORIGINATOR_ADDRESS=$$(grep '$(ORIGINATOR_NAME)' $(ACCOUNT_KEYS_FILENAME) | cut -d ',' -f5); \
     echo "Originator address: $$ROOT_ORIGINATOR_ADDRESS"; \
   	TX_HASH=$$(python3 rosetta_handler.py rosetta-create-derived-account $(ROSETTA_HOST_URL) $$ROOT_ORIGINATOR_ADDRESS $$ROOT_ORIGINATOR_PUBLIC_KEY $$ROOT_ORIGINATOR_PRIVATE_KEY $$NEW_ACCOUNT_PUBLIC_ROSETTA_KEY); \
-	ADDRESS=$$(flow transactions get $$TX_HASH -f $(FLOW_JSON) -n ${ROSETTA_ENV} -o json | jq -r '.events[] | select(.type == "flow.AccountCreated") | .values.value.fields[] | select(.name == "address") | .value.value'); \
+	ADDRESS=$$(flow transactions get $$TX_HASH -f $(FLOW_JSON) -n $(ROSETTA_ENV) -o json | jq -r '.events[] | select(.type == "flow.AccountCreated") | .values.value.fields[] | select(.name == "address") | .value.value'); \
 	echo "TX_HASH: $$TX_HASH , ADDRESS: $$ADDRESS"; \
   	echo "$(NEW_ACCOUNT_NAME),$$NEW_ACCOUNT_PUBLIC_FLOW_KEY,$$NEW_ACCOUNT_PUBLIC_ROSETTA_KEY,$$NEW_ACCOUNT_PRIVATE_KEY,$$ADDRESS" >> $(ACCOUNT_KEYS_FILENAME);
 
@@ -77,9 +77,32 @@ rosetta-transfer-funds:
 	RECIPIENT_ADDRESS=$$(grep '$(RECIPIENT_NAME)' $(ACCOUNT_KEYS_FILENAME) | cut -d ',' -f5); \
     echo "Recipient address: $$RECIPIENT_ADDRESS"; \
   	TX_HASH=$$(python3 rosetta_handler.py rosetta-transfer-funds $(ROSETTA_HOST_URL) $$PAYER_ADDRESS $$PAYER_PUBLIC_KEY $$PAYER_PRIVATE_KEY $$RECIPIENT_ADDRESS $$AMOUNT); \
-  	STATUS=$$(flow transactions get $$TX_HASH -f $(FLOW_JSON) -n ${ROSETTA_ENV} -o json | jq -r '.status')
-    echo "TX_HASH: $$TX_HASH $(STATUS)";
+    echo "Funding sent: $$TX_HASH";
 
+# Use this target to verify that the accounts configured in the Rosetta environment JSON have the specified contracts deployed
+.PHONY: verify-configured-contract-addresses
+verify-configured-contract-addresses:
+	EXPECTED_CONTRACTS=$$(jq -r '.contracts | to_entries | map("\(.key | gsub("_";""))=\(.value)") | .[]' $(ROSETTA_ENV).json); \
+	for contract in $$EXPECTED_CONTRACTS; do \
+		KEY=$$(echo $$contract | cut -d= -f1); \
+		VALUE=$$(echo $$contract | cut -d= -f2); \
+		if [ "$$VALUE" = "0000000000000000" ]; then \
+        			continue; \
+        fi; \
+		CONTRACTS_FOUND=$$(flow accounts get $$VALUE -f $(FLOW_JSON) -n $(ROSETTA_ENV) -o json | \
+			jq -r '.contracts | join(",") '); \
+		found=false ; \
+		for contract in $$(echo $$CONTRACTS_FOUND | tr ',' ' '); do \
+		  		lowercase_contract_name=$$(echo $$contract | tr '[:upper:]' '[:lower:]'); \
+		  		if [ "$$KEY" = "$$lowercase_contract_name" ]; then \
+        		  	found=true ; \
+        			break; \
+        		fi; \
+        	done; \
+        if [ "$$found" = "false" ]; then \
+          	echo "Contract $$KEY configured in $(ROSETTA_ENV).json is not deployed to configured address $$VALUE" ;\
+		fi; \
+	done ; \
 
 .PHONY: build
 build: go-build
