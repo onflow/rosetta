@@ -75,7 +75,7 @@ This target undertakes the following for the target environment:
 * Generates public and private key pairs for use by Flow and Rosetta 
 * Uses the generated public key to create a new Flow account to serve as an originator
 * Updates ${FLOW_JSON} with the new account and private key JSON block
-* Adds the new address to the originators list in ${ROSETTA_ENV} config JSON
+* Adds the new address to the originators list in ${ROSETTA_ENV}.json
 * Updates ${ACCOUNT_KEYS_FILENAME} with a single CSV row entry with the following columns
   * `name, Flow public key, Rosetta public key, Flow private key, account identifier`
 
