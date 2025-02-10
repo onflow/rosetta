@@ -4,8 +4,8 @@ FLOW_JSON = script/flow.json
 FLOW_JSON_NETWORK = localnet
 FLOW_JSON_SIGNER = localnet-service-account
 FLOW_CLI_FLAGS = -n $(FLOW_JSON_NETWORK) -f $(FLOW_JSON) --signer $(FLOW_JSON_SIGNER)
-ROSETTA_ENV = testnet
-ROSETTA_HOST_URL = "http://127.0.0.1:8088"
+ROSETTA_ENV = localnet
+ROSETTA_HOST_URL = "http://127.0.0.1:8080"
 COMPILER_FLAGS := CGO_CFLAGS="-O2 -D__BLST_PORTABLE__"
 
 .PHONY: all build
