@@ -15,8 +15,6 @@
   "disable_consensus_follower": true,
   "network": "localnet",
   "originators": [
-    "1beecc6fef95b62e",
-    "ff8975b2fe6fb6f1"
   ],
   "port": 8080,
   "spork_seal_tolerance": 10000,
