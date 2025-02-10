@@ -33,27 +33,6 @@
         "hashAlgorithm": "SHA2_256",
         "privateKey": "8ae3d0461cfed6d6f49bfc25fa899351c39d1bd21fdba8c87595b6c49bb4cc43"
       }
-    },
-    "root-originator-account-1": {
-      "address": "1beecc6fef95b62e",
-      "key": {
-        "type": "hex",
-        "index": 0,
-        "signatureAlgorithm": "ECDSA_secp256k1",
-        "hashAlgorithm": "SHA3_256",
-        "privateKey": "f0cd40495618388f333147b8b6b6be8ef5b279aed520ffa256fcb2a73cba6227"
-      }
-    },
-    "root-originator-account-2": {
-      "address": "ff8975b2fe6fb6f1",
-      "key": {
-        "type": "hex",
-        "index": 0,
-        "signatureAlgorithm": "ECDSA_secp256k1",
-        "hashAlgorithm": "SHA3_256",
-        "privateKey": "4dd3d8b317934a4101c15bd1944e89f77d7062a4ad1f4b24d39191f036c9f7bd"
-      }
-    }
   },
   "deployments": {}
 }
