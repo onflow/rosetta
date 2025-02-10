@@ -1,3 +1,6 @@
+# 
+# This file probably makes sense to deprecate when this project is automated. This functionality could probably just as well be called from `go` code here in the project using the Rosetta SDKs compared to the current low level integration. As it is, I left these for another refactoring. 
+# 
 import json
 import subprocess
 import requests
