@@ -32,7 +32,7 @@
         "52": {
             "access_nodes": [
                 {
-                    "address": "access-001.devnet52.nodes.onflow.org:9000"
+                    "address": "access.devnet.nodes.onflow.org:9000"
                 }
             ],
             "root_block": 218215349,
