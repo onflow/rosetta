@@ -154,21 +154,76 @@ Before continuing to test you must wait for Rosetta to confirm it has reached th
 ### Create originator derived accounts
 
 If this is the first time testing in this environment, or if the Flow environment has been reset, you will need to create at least two originator 
-derived accounts. These _must_ be created via Rosetta rather than through the `flow-cli` or other non Rosetta transactions.
+derived accounts. These _must_ be created via Rosetta rather than through the `flow-cli` or other non Rosetta transactions. 
+
+Before proceeding check `${ROSETTA_ENV}.json` to confirm which `originators` are listed. If the originators list is empty at the time you first 
+run Rosetta, once the originator accounts are created, Rosetta will need to be stopped, and the data directory will need to be deleted before 
+restarting it. This is required to ensure that the indexer knows which the originator account addresses (which the target below will create and 
+add to`${ROSETTA_ENV}.json`).
 
 ```bash
 NEW_ACCOUNT_NAME=derived-account-1 ORIGINATOR_NAME=root-originator-1 make rosetta-create-sub-account
 ```
 
+Rosetta should emit logs similar to the following after some time. The `WARN` log can be ignored
+
+```bash
+2025-02-09T15:04:58.713-0800	WARN	Ignoring FlowToken.TokensWithdrawn event with a nil address in transaction 6af4ed659c3a01f6844d8e6c364809e8294125900be986c40476e4e12842899f in block b5d9834140236ae1c271037fce8e3edc7daff6b8b9098b9f8ba575fa074f3f70 at height 8751
+2025-02-09T15:04:58.713-0800	INFO	Indexed block b5d9834140236ae1c271037fce8e3edc7daff6b8b9098b9f8ba575fa074f3f70 at height 8751 (1 new accounts, 1 transfers)
+2025-02-09T15:04:58.729-0800	INFO	Indexed block 1db8997c7d403ec1c2d6594aeab1d05782ded66794e3e1034c92d7a0c2542dbe at height 8752
+2025-02-09T15:04:58.735-0800	INFO	Retrieved block ac9046013b485a558b95d84339d8914a7cd7e41c4c0225eb78e59e7a56977a95 at height 8760
+2025-02-09T15:04:58.751-0800	INFO	Indexed block 9ff118a3beb3eabe29847a39e04f29d3cab729a00b5c5707415295139d22cadb at height 8753
+2025-02-09T15:04:58.770-0800	INFO	Indexed block f84451f29a7e78d92ed19b3f259b43a51c545723bfa4f90553a63b29bc9f8e95 at height 8754
+...
+2025-02-09T15:53:26.420-0800	WARN	Checked all account balances: 2 accounts
+```
+
+The number of account balances that are counted should be the sum of all originator accounts plus the sum of all derived accounts that exist 
+on that network environment. 
+
 ### Transfer funds
 
 Now we use Rosetta to trigger a transfer into the newly created derived account. 
 ```bash
-RECIPIENT=derived-account-1 ORIGINATOR_NAME=root-originator-1 make rosetta-transfer-funds
+RECIPIENT_NAME=derived-account-1 PAYER_NAME=root-originator-1 AMOUNT=50 make rosetta-transfer-funds
+```
+
+The indexer will emit a log similar to this which is indicative that the fund transfer between tracked accounts was observed. Once this has been confirmed
+testing is considered complete and Rosetta is ready to release. 
+
+```bash
+2025-02-09T13:01:48.389-0800	INFO	Indexed block 94bf8cafa23db356372888e258e27e8667433d5f96f7885b81a210aad09e7d1e at height 697 (0 new accounts, 1 transfers)
 ```
 
 ## Flow-go update guidance
 
-In general
+In general Rosetta is required to be updated when there are known breaking changes in `flow-go` or otherwise when changes 
+cause Rosetta to no longer compile. Once the specific `flow-go` version tag has been confirmed you can update Rosetta with it. 
 
-go get github.com/onflow/flow-go@master
+```bash
+go get github.com/onflow/flow-go@v0.38.0 # set your required version
+go mod tidy
+```
+
+Once Rosetta compiles using the same version dependency for the desired release you will need to bootstrap a clean
+`localnet` environment with the same `flow-go` version. 
+
+It may also be necessary to update other dependencies which may have security vulnerabilities or which were updated in 
+`flow-go` and which should be aligned. 
+
+## Troubleshooting
+
+The following error log may indicate that the indexer is not tracking events as expected. This may be because the configured 
+contract addresses for that environment are incorrect, or otherwise that the contracts specified have not been deployed to those 
+addresses.
+
+```bash
+2025-02-08T16:25:19.540-0800	ERROR	Mismatching balance found for account 1beecc6fef95b62e at block 17c606ad1b1b7f2610a07bd2292c6f9a714ef20a3782fc8589e5afc43a0c3e58 (1048): indexed 0, got on-chain 100000
+```
+
+Use the following target to verify that the expected contracts are deployed to the configured addresses in the Rosetta 
+environment JSON. 
+
+```bash
+make verify-configured-contract-addresses
+```
