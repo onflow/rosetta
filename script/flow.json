@@ -8,7 +8,6 @@
   "contracts": {},
   "networks": {
     "emulator": "127.0.0.1:3569",
-    "testing": "127.0.0.1:3569",
     "localnet": "127.0.0.1:4001",
     "mainnet": "access.mainnet.nodes.onflow.org:9000",
     "testnet": "access.devnet.nodes.onflow.org:9000"
