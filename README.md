@@ -564,7 +564,7 @@ The `SeedNodeConfig` supports the following fields:
 
 ## Upgrading, testing and validating Rosetta updates
 
-See `/scripts/README.md`
+See `[/script/README.md]("script/README.md")`
 
 ## FlowColdStorageProxy Contract - not currently in use
 
