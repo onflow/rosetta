@@ -14,10 +14,10 @@ require (
 	github.com/golang/protobuf v1.5.4
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/libp2p/go-libp2p v0.38.2
-	github.com/onflow/cadence v1.3.1
+	github.com/onflow/cadence v1.3.3
 	github.com/onflow/crypto v0.25.2
-	github.com/onflow/flow-go v0.38.1
-	github.com/onflow/flow/protobuf/go/flow v0.4.7
+	github.com/onflow/flow-go v0.39.0
+	github.com/onflow/flow/protobuf/go/flow v0.4.9
 	github.com/rs/zerolog v1.29.0
 	github.com/stretchr/testify v1.10.0
 	go.opentelemetry.io/otel v1.34.0
@@ -247,11 +247,11 @@ require (
 	github.com/multiformats/go-varint v0.0.7 // indirect
 	github.com/olekukonko/tablewriter v0.0.5 // indirect
 	github.com/onflow/atree v0.9.0 // indirect
-	github.com/onflow/flow-core-contracts/lib/go/contracts v1.4.0 // indirect; v1.2.4-0.20230703193002-53362441b57d // indirect
-	github.com/onflow/flow-core-contracts/lib/go/templates v1.4.0 // indirect; v1.2.3 // indirect
+	github.com/onflow/flow-core-contracts/lib/go/contracts v1.6.0 // indirect; v1.2.4-0.20230703193002-53362441b57d // indirect
+	github.com/onflow/flow-core-contracts/lib/go/templates v1.6.0 // indirect; v1.2.3 // indirect
 	github.com/onflow/flow-ft/lib/go/contracts v1.0.1 // indirect
-	github.com/onflow/flow-go-sdk v1.3.1 // indirect
-	github.com/onflow/flow-nft/lib/go/contracts v1.2.2 // indirect
+	github.com/onflow/flow-go-sdk v1.3.3 // indirect
+	github.com/onflow/flow-nft/lib/go/contracts v1.2.3 // indirect
 	github.com/onflow/go-ethereum v1.14.7 // indirect
 	github.com/onflow/sdks v0.6.0-preview.1 // indirect
 	github.com/onflow/wal v1.0.2 // indirect
