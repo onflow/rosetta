@@ -63,7 +63,7 @@ func TestVerifyExecutionResultHash(t *testing.T) {
 			sealedResults[string(seal.BlockId)] = string(seal.ResultId)
 		}
 		var resultID flow.Identifier
-		exec, ok := convertExecutionResult(block.Id, blockHeight, execResult)
+		exec, ok := convertExecutionResult(spork.Version, block.Id, blockHeight, execResult)
 		if ok {
 			resultID = deriveExecutionResult(spork, exec)
 		}
@@ -156,7 +156,7 @@ func TestExecutionResultConsistency_ChunkServiceEventCountField(t *testing.T) {
 
 		psv1ProtobufResult, err := convert.ExecutionResultToMessage(psv1Result)
 		require.NoError(t, err)
-		psv1RosettaResult, ok := convertExecutionResult(nil, 0, psv1ProtobufResult)
+		psv1RosettaResult, ok := convertExecutionResult(7, nil, 0, psv1ProtobufResult)
 		require.True(t, ok)
 		rosettaResultID := deriveExecutionResultV2(psv1RosettaResult)
 		assert.Equal(t, psv1Result.ID(), rosettaResultID)
@@ -168,7 +168,7 @@ func TestExecutionResultConsistency_ChunkServiceEventCountField(t *testing.T) {
 
 		psv2ProtobufResult, err := convert.ExecutionResultToMessage(psv2Result)
 		require.NoError(t, err)
-		psv2RosettaResult, ok := convertExecutionResult(nil, 0, psv2ProtobufResult)
+		psv2RosettaResult, ok := convertExecutionResult(7, nil, 0, psv2ProtobufResult)
 		require.True(t, ok)
 		rosettaResultID := deriveExecutionResultV2(psv2RosettaResult)
 		assert.Equal(t, psv2Result.ID(), rosettaResultID)

@@ -23,7 +23,7 @@ import (
 	"github.com/onflow/rosetta/log"
 )
 
-func convertExecutionResult(hash []byte, height uint64, result *entities.ExecutionResult) (flowExecutionResult, bool) {
+func convertExecutionResult(sporkVersion int, hash []byte, height uint64, result *entities.ExecutionResult) (flowExecutionResult, bool) {
 	// todo: add V6 version branching here directly after mainnet23 spork
 	exec := flowExecutionResult{
 		BlockID:          toFlowIdentifier(result.BlockId),
@@ -31,7 +31,7 @@ func convertExecutionResult(hash []byte, height uint64, result *entities.Executi
 		PreviousResultID: toFlowIdentifier(result.PreviousResultId),
 	}
 	for _, chunk := range result.Chunks {
-		convertedChunk, err := convert.MessageToChunk(chunk)
+		convertedChunk, err := convertChunk(sporkVersion, chunk)
 		if err != nil {
 			log.Errorf("Failed to convert chunk in block %x at height %d:  %v", hash, height, err)
 			return flowExecutionResult{}, false
@@ -51,6 +51,25 @@ func convertExecutionResult(hash []byte, height uint64, result *entities.Executi
 		exec.ServiceEvents = append(exec.ServiceEvents, serviceEvent)
 	}
 	return exec, true
+}
+
+func convertChunk(sporkVersion int, protobufChunk *entities.Chunk) (*flow.Chunk, error) {
+	if sporkVersion < 7 {
+		chunk, err := convert.MessageToChunk(protobufChunk)
+		if err != nil {
+			return nil, err
+		}
+		// Protocol State v1: ServiceEventCount field not yet added.
+		// Access Nodes running up-to-date software encode nil ServiceEventCount fields in a detectable way,
+		// but we assume that we are querying historical Access Nodes that are running prior software versions.
+		// In this case, the new Protobuf field is automatically set to 0.
+		// See https://github.com/onflow/flow-go/pull/6744 for additional context
+		chunk.ServiceEventCount = nil
+		return chunk, nil
+	}
+
+	// Protocol State v2+
+	return convert.MessageToChunk(protobufChunk)
 }
 
 func decodeEvent(typ string, evt *entities.Event, hash []byte, height uint64) (cadence.Event, error) {
@@ -426,7 +445,7 @@ func verifyBlockHash(spork *config.Spork, hash []byte, height uint64, hdr *entit
 
 	var resultIDs []flow.Identifier
 	for _, src := range block.ExecutionResultList {
-		exec, ok := convertExecutionResult(hash, height, src)
+		exec, ok := convertExecutionResult(spork.Version, hash, height, src)
 		if ok {
 			resultIDs = append(resultIDs, deriveExecutionResult(spork, exec))
 		}
