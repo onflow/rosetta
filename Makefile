@@ -15,6 +15,10 @@ all: build
 go-build:
 	${COMPILER_FLAGS} go build -o server cmd/server/server.go
 
+.PHONY: go-test
+go-test:
+	go test -v github.com/onflow/rosetta/state/...
+
 .PHONY: gen-originator-account
 gen-originator-account:
 	KEYS=$$(go run ./cmd/genkey/genkey.go -csv); \
@@ -105,7 +109,7 @@ verify-configured-contract-addresses:
 	done ; \
 
 .PHONY: build
-build: go-build
+build: go-test go-build
 
 .PHONY: deps
 deps:
