@@ -90,8 +90,8 @@ func convertExecutionResult(hash []byte, height uint64, result *entities.Executi
 				Type:  eventType,
 			})
 		case flow.ServiceEventProtocolStateVersionUpgrade:
-			beacon := &flow.ProtocolStateVersionUpgrade{}
-			err := json.Unmarshal(ev.Payload, beacon)
+			event := &flow.ProtocolStateVersionUpgrade{}
+			err := json.Unmarshal(ev.Payload, event)
 			if err != nil {
 				log.Errorf(
 					"Failed to decode %q service event in block %x at height %d: %s",
@@ -100,7 +100,21 @@ func convertExecutionResult(hash []byte, height uint64, result *entities.Executi
 				return flowExecutionResult{}, false
 			}
 			exec.ServiceEvents = append(exec.ServiceEvents, flow.ServiceEvent{
-				Event: beacon,
+				Event: event,
+				Type:  eventType,
+			})
+		case flow.ServiceEventRecover:
+			event := &flow.EpochRecover{}
+			err := json.Unmarshal(ev.Payload, event)
+			if err != nil {
+				log.Errorf(
+					"Failed to decode %q service event in block %x at height %d: %s",
+					ev.Type, hash, height, err,
+				)
+				return flowExecutionResult{}, false
+			}
+			exec.ServiceEvents = append(exec.ServiceEvents, flow.ServiceEvent{
+				Event: event,
 				Type:  eventType,
 			})
 		default:
