@@ -17,6 +17,7 @@ import (
 	"github.com/onflow/flow-go/model/flow"
 	"github.com/onflow/flow-go/storage/merkle"
 	"github.com/onflow/flow/protobuf/go/flow/entities"
+
 	"github.com/onflow/rosetta/access"
 	"github.com/onflow/rosetta/config"
 	"github.com/onflow/rosetta/log"
@@ -76,6 +77,20 @@ func convertExecutionResult(hash []byte, height uint64, result *entities.Executi
 			})
 		case flow.ServiceEventVersionBeacon:
 			beacon := &flow.VersionBeacon{}
+			err := json.Unmarshal(ev.Payload, beacon)
+			if err != nil {
+				log.Errorf(
+					"Failed to decode %q service event in block %x at height %d: %s",
+					ev.Type, hash, height, err,
+				)
+				return flowExecutionResult{}, false
+			}
+			exec.ServiceEvents = append(exec.ServiceEvents, flow.ServiceEvent{
+				Event: beacon,
+				Type:  eventType,
+			})
+		case flow.ServiceEventProtocolStateVersionUpgrade:
+			beacon := &flow.ProtocolStateVersionUpgrade{}
 			err := json.Unmarshal(ev.Payload, beacon)
 			if err != nil {
 				log.Errorf(
