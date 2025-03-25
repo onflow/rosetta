@@ -12,6 +12,7 @@ import (
 	_ "github.com/onflow/cadence/stdlib" // imported for side-effects only
 	"github.com/onflow/crypto"
 	"github.com/onflow/crypto/hash"
+	"github.com/onflow/flow-go/engine/common/rpc/convert"
 	"github.com/onflow/flow-go/model/fingerprint"
 	"github.com/onflow/flow-go/model/flow"
 	"github.com/onflow/flow-go/storage/merkle"
@@ -30,18 +31,12 @@ func convertExecutionResult(hash []byte, height uint64, result *entities.Executi
 		PreviousResultID: toFlowIdentifier(result.PreviousResultId),
 	}
 	for _, chunk := range result.Chunks {
-		exec.Chunks = append(exec.Chunks, &flow.Chunk{
-			ChunkBody: flow.ChunkBody{
-				BlockID:              toFlowIdentifier(chunk.BlockId),
-				CollectionIndex:      uint(chunk.CollectionIndex),
-				EventCollection:      toFlowIdentifier(chunk.EventCollection),
-				NumberOfTransactions: uint64(chunk.NumberOfTransactions),
-				StartState:           flow.StateCommitment(toFlowIdentifier(chunk.StartState)),
-				TotalComputationUsed: chunk.TotalComputationUsed,
-			},
-			EndState: flow.StateCommitment(toFlowIdentifier(chunk.EndState)),
-			Index:    chunk.Index,
-		})
+		convertedChunk, err := convert.MessageToChunk(chunk)
+		if err != nil {
+			log.Errorf("Failed to convert chunk in block %x at height %d:  %v", hash, height, err)
+			return flowExecutionResult{}, false
+		}
+		exec.Chunks = append(exec.Chunks, convertedChunk)
 	}
 	for _, ev := range result.ServiceEvents {
 		eventType := flow.ServiceEventType(ev.Type)
