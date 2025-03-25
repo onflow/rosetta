@@ -2,7 +2,6 @@ package state
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -46,84 +45,15 @@ func convertExecutionResult(hash []byte, height uint64, result *entities.Executi
 	}
 	for _, ev := range result.ServiceEvents {
 		eventType := flow.ServiceEventType(ev.Type)
-		switch eventType {
-		case flow.ServiceEventSetup:
-			setup := &flow.EpochSetup{}
-			err := json.Unmarshal(ev.Payload, setup)
-			if err != nil {
-				log.Errorf(
-					"Failed to decode %q service event in block %x at height %d: %s",
-					ev.Type, hash, height, err,
-				)
-				return flowExecutionResult{}, false
-			}
-			exec.ServiceEvents = append(exec.ServiceEvents, flow.ServiceEvent{
-				Event: setup,
-				Type:  eventType,
-			})
-		case flow.ServiceEventCommit:
-			commit := &flow.EpochCommit{}
-			err := json.Unmarshal(ev.Payload, commit)
-			if err != nil {
-				log.Errorf(
-					"Failed to decode %q service event in block %x at height %d: %s",
-					ev.Type, hash, height, err,
-				)
-				return flowExecutionResult{}, false
-			}
-			exec.ServiceEvents = append(exec.ServiceEvents, flow.ServiceEvent{
-				Event: commit,
-				Type:  eventType,
-			})
-		case flow.ServiceEventVersionBeacon:
-			beacon := &flow.VersionBeacon{}
-			err := json.Unmarshal(ev.Payload, beacon)
-			if err != nil {
-				log.Errorf(
-					"Failed to decode %q service event in block %x at height %d: %s",
-					ev.Type, hash, height, err,
-				)
-				return flowExecutionResult{}, false
-			}
-			exec.ServiceEvents = append(exec.ServiceEvents, flow.ServiceEvent{
-				Event: beacon,
-				Type:  eventType,
-			})
-		case flow.ServiceEventProtocolStateVersionUpgrade:
-			event := &flow.ProtocolStateVersionUpgrade{}
-			err := json.Unmarshal(ev.Payload, event)
-			if err != nil {
-				log.Errorf(
-					"Failed to decode %q service event in block %x at height %d: %s",
-					ev.Type, hash, height, err,
-				)
-				return flowExecutionResult{}, false
-			}
-			exec.ServiceEvents = append(exec.ServiceEvents, flow.ServiceEvent{
-				Event: event,
-				Type:  eventType,
-			})
-		case flow.ServiceEventRecover:
-			event := &flow.EpochRecover{}
-			err := json.Unmarshal(ev.Payload, event)
-			if err != nil {
-				log.Errorf(
-					"Failed to decode %q service event in block %x at height %d: %s",
-					ev.Type, hash, height, err,
-				)
-				return flowExecutionResult{}, false
-			}
-			exec.ServiceEvents = append(exec.ServiceEvents, flow.ServiceEvent{
-				Event: event,
-				Type:  eventType,
-			})
-		default:
+		serviceEvent, err := flow.ServiceEventJSONMarshaller.UnmarshalWithType(ev.Payload, eventType)
+		if err != nil {
 			log.Errorf(
-				"Unknown service event type in block %x at height %d: %q",
-				hash, height, ev.Type,
+				"Failed to decode %q service event in block %x at height %d: %s",
+				ev.Type, hash, height, err,
 			)
 			return flowExecutionResult{}, false
 		}
+		exec.ServiceEvents = append(exec.ServiceEvents, serviceEvent)
 	}
 	return exec, true
 }
