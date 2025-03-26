@@ -5,12 +5,15 @@ import (
 	"context"
 	"testing"
 
+	"github.com/onflow/flow-go/engine/common/rpc/convert"
 	"github.com/onflow/flow-go/model/flow"
+	"github.com/onflow/flow-go/utils/unittest"
 	"github.com/onflow/flow/protobuf/go/flow/entities"
-	"github.com/onflow/rosetta/access"
-	"github.com/onflow/rosetta/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/onflow/rosetta/access"
+	"github.com/onflow/rosetta/config"
 )
 
 var accessAddr = "access-001.mainnet24.nodes.onflow.org:9000"
@@ -60,7 +63,7 @@ func TestVerifyExecutionResultHash(t *testing.T) {
 			sealedResults[string(seal.BlockId)] = string(seal.ResultId)
 		}
 		var resultID flow.Identifier
-		exec, ok := convertExecutionResult(block.Id, blockHeight, execResult)
+		exec, ok := convertExecutionResult(spork.Version, block.Id, blockHeight, execResult)
 		if ok {
 			resultID = deriveExecutionResult(spork, exec)
 		}
@@ -135,6 +138,41 @@ func TestDeriveEventsHash(t *testing.T) {
 			require.Equal(t, eventHash[:], chunk.EventCollection)
 		}
 	}
+}
+
+// TestExecutionResultConsistency_ChunkServiceEventCountField tests that Rosetta computes
+// a consistent entity ID for execution results for both Protocol State v1 and v2 formats.
+// Rosetta re-implements core models from flow-go, rather than using the model types
+// exported by flow-go, which introduces risk that changes in flow-go are not reflected in Rosetta.
+// This test case validates consistency only for Protocol State version 1 and 2.
+// See https://github.com/onflow/flow-go/pull/6744 for additional context.
+func TestExecutionResultConsistency_ChunkServiceEventCountField(t *testing.T) {
+	t.Run("Execution Result - Protocol State v1", func(t *testing.T) {
+		psv1Result := unittest.ExecutionResultFixture(func(result *flow.ExecutionResult) {
+			for _, chunk := range result.Chunks {
+				chunk.ServiceEventCount = nil
+			}
+		})
+
+		psv1ProtobufResult, err := convert.ExecutionResultToMessage(psv1Result)
+		require.NoError(t, err)
+		psv1RosettaResult, ok := convertExecutionResult(7, nil, 0, psv1ProtobufResult)
+		require.True(t, ok)
+		rosettaResultID := deriveExecutionResultV2(psv1RosettaResult)
+		assert.Equal(t, psv1Result.ID(), rosettaResultID)
+	})
+	t.Run("Execution Result - Protocol State v2", func(t *testing.T) {
+		psv2Result := unittest.ExecutionResultFixture(func(result *flow.ExecutionResult) {
+			result.Chunks[0].ServiceEventCount = unittest.PtrTo[uint16](0)
+		})
+
+		psv2ProtobufResult, err := convert.ExecutionResultToMessage(psv2Result)
+		require.NoError(t, err)
+		psv2RosettaResult, ok := convertExecutionResult(7, nil, 0, psv2ProtobufResult)
+		require.True(t, ok)
+		rosettaResultID := deriveExecutionResultV2(psv2RosettaResult)
+		assert.Equal(t, psv2Result.ID(), rosettaResultID)
+	})
 }
 
 func createSpork(ctx context.Context) (*config.Spork, error) {

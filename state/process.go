@@ -12,6 +12,9 @@ import (
 	"github.com/onflow/flow-go/model/flow"
 	flowaccess "github.com/onflow/flow/protobuf/go/flow/access"
 	"github.com/onflow/flow/protobuf/go/flow/entities"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/onflow/rosetta/access"
 	"github.com/onflow/rosetta/cache"
 	"github.com/onflow/rosetta/config"
@@ -19,8 +22,6 @@ import (
 	"github.com/onflow/rosetta/log"
 	"github.com/onflow/rosetta/model"
 	"github.com/onflow/rosetta/trace"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 var (
@@ -326,7 +327,7 @@ outer:
 				}
 			}
 			var resultID flow.Identifier
-			exec, convOk := convertExecutionResult(hash, height, execResult)
+			exec, convOk := convertExecutionResult(spork.Version, hash, height, execResult)
 			if convOk {
 				resultID = deriveExecutionResult(spork, exec)
 			}
