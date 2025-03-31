@@ -3,7 +3,6 @@ package script
 import (
 	"context"
 	"github.com/onflow/rosetta/config"
-	"github.com/onflow/rosetta/log"
 	"testing"
 )
 
@@ -17,7 +16,6 @@ type MockChain struct {
 func TestCompileComputeFees(t *testing.T) {
 	// Initialize the chain configuration from testnet.json
 	chain := config.Init(context.Background(), "../testnet.json")
-	log.Infof("sdffd %s", chain.Contracts.FlowFees)
 
 	// Call the Compile function
 	result := Compile("compute_fees", ComputeFees, chain)
