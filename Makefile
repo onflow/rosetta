@@ -18,6 +18,7 @@ go-build:
 .PHONY: go-test
 go-test:
 	go test -v github.com/onflow/rosetta/state/...
+	go test -v github.com/onflow/rosetta/script/...
 
 .PHONY: gen-originator-account
 gen-originator-account:
