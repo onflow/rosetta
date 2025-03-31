@@ -6,12 +6,6 @@ import (
 	"testing"
 )
 
-// Mock Chain struct (replace with your actual config.Chain definition)
-type MockChain struct {
-	Network string
-	ID      string
-}
-
 // TestCompile tests the Compile function
 func TestCompileComputeFees(t *testing.T) {
 	// Initialize the chain configuration from testnet.json
