@@ -15,7 +15,7 @@ type MockChain struct {
 
 // TestCompile tests the Compile function
 func TestCompileComputeFees(t *testing.T) {
-	// Initialize the chain configuration from test.json
+	// Initialize the chain configuration from testnet.json
 	chain := config.Init(context.Background(), "../testnet.json")
 	log.Infof("sdffd %s", chain.Contracts.FlowFees)
 
