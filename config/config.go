@@ -37,7 +37,7 @@ type Chain struct {
 	SkipBlocks                map[flow.Identifier]struct{}
 	SporkSealTolerance        uint64
 	Sporks                    []*Spork
-	UseConsensusFollwer       bool
+	UseConsensusFollower      bool
 	Workers                   uint
 }
 
@@ -437,8 +437,8 @@ func (c *chainConfig) parseAndValidateSporks(ctx context.Context, result *Chain)
 }
 
 func (c *chainConfig) parseAndValidateDisableConsensusFollower(result *Chain) {
-	result.UseConsensusFollwer = !c.DisableConsensusFollower
-	if result.UseConsensusFollwer {
+	result.UseConsensusFollower = !c.DisableConsensusFollower
+	if result.UseConsensusFollower {
 		latest := result.Sporks[len(result.Sporks)-1]
 		cfg := latest.Consensus
 		if cfg == nil {

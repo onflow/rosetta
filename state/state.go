@@ -80,7 +80,7 @@ func (i *Indexer) Run(ctx context.Context) {
 	i.handleResyncFrom()
 	i.initState()
 	i.initWorkers(ctx)
-	if i.Chain.UseConsensusFollwer {
+	if i.Chain.UseConsensusFollower {
 		i.runConsensusFollower(ctx)
 	}
 	go i.indexBlocks(ctx)
@@ -310,7 +310,7 @@ func (i *Indexer) indexLiveSpork(rctx context.Context, spork *config.Spork, last
 	height := startHeight
 	parent := lastIndexed.Hash
 	synced := false
-	useConsensus := i.Chain.UseConsensusFollwer
+	useConsensus := i.Chain.UseConsensusFollower
 	// NOTE(tav): Since the root block of a live spork is self sealed, we avoid
 	// trying to detect its seal within descendant blocks.
 	if height == spork.RootBlock {
