@@ -2,8 +2,8 @@
 // restored then it's a bridge to cross at that time
 //import FlowColdStorageProxy from 0xProxy
 
-import FlowToken from 0x0ae53cb6e3f42a79
-import FungibleToken from 0xee82856bf20e2aa6
+import FlowToken from 0x{{.Contracts.FlowToken}}
+import FungibleToken from 0x{{.Contracts.FungibleToken}}
 
 access(all) struct AccountBalances {
     access(all)  let default_balance: UFix64
