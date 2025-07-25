@@ -429,6 +429,29 @@ func deriveExecutionReceiptHash(spork *config.Spork, receipt flow.ExecutionRecei
 	}
 }
 
+func deriveCollectionGuaranteeID(spork *config.Spork, guarantee *entities.CollectionGuarantee) flow.Identifier {
+	switch spork.Version {
+	case 1, 2, 3, 4, 5, 6, 7:
+		return toFlowIdentifier(guarantee.CollectionId)
+	case 8:
+		return flow.MakeID(struct {
+			CollectionID     flow.Identifier
+			ReferenceBlockID flow.Identifier
+			ChainID          flow.ChainID
+			SignerIndices    []byte
+			Signature        crypto.Signature
+		}{
+			CollectionID:     toFlowIdentifier(guarantee.CollectionId),
+			ReferenceBlockID: toFlowIdentifier(guarantee.ReferenceBlockId),
+			ChainID:          flow.ChainID(""), // TODO update Access API
+			SignerIndices:    guarantee.SignerIndices,
+			Signature:        guarantee.Signature,
+		})
+	default:
+		panic("unreachable code")
+	}
+}
+
 func toFlowIdentifier(v []byte) flow.Identifier {
 	id := flow.Identifier{}
 	copy(id[:], v)
@@ -503,11 +526,12 @@ func verifyBlockHash(spork *config.Spork, hash []byte, height uint64, hdr *entit
 		)
 		return false
 	}
-	var collectionIDs []flow.Identifier
+	var guaranteeIDs []flow.Identifier
 	for _, src := range block.CollectionGuarantees {
-		collectionIDs = append(collectionIDs, toFlowIdentifier(src.CollectionId))
+		guaranteeID := deriveCollectionGuaranteeID(spork, src)
+		guaranteeIDs = append(guaranteeIDs, guaranteeID)
 	}
-	collectionHash := flow.MerkleRoot(collectionIDs...)
+	collectionHash := flow.MerkleRoot(guaranteeIDs...)
 	var sealIDs []flow.Identifier
 	for _, src := range block.BlockSeals {
 		seal := &flow.Seal{
@@ -562,6 +586,7 @@ func verifyBlockHash(spork *config.Spork, hash []byte, height uint64, hdr *entit
 	}
 	return true
 }
+
 func derivePayloadHash(
 	sporkVersion int,
 	collectionHash flow.Identifier,
