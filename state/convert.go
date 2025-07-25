@@ -112,8 +112,29 @@ func deriveBlockHash(spork *config.Spork, hdr flowHeader) flow.Identifier {
 		return deriveBlockHashV3(hdr)
 	case 5, 6, 7:
 		return deriveBlockHashV5(hdr)
+	case 8:
+		return deriveBlockHashV8(hdr)
 	}
 	panic("unreachable code")
+}
+
+func deriveTimeoutCertificateHashV5(tc *flow.TimeoutCertificate) flow.Identifier {
+	if tc == nil {
+		return flow.ZeroID
+	}
+	return flow.MakeID(struct {
+		View          uint64
+		NewestQCViews []uint64
+		NewestQCID    flow.Identifier
+		SignerIndices []byte
+		SigData       crypto.Signature
+	}{
+		View:          tc.View,
+		NewestQCViews: tc.NewestQCViews,
+		NewestQCID:    tc.NewestQC.ID(),
+		SignerIndices: tc.SignerIndices,
+		SigData:       tc.SigData,
+	})
 }
 
 func deriveBlockHashV1(hdr flowHeader) flow.Identifier {
@@ -185,6 +206,35 @@ func deriveBlockHashV5(hdr flowHeader) flow.Identifier {
 		Height:             hdr.Height,
 		PayloadHash:        hdr.PayloadHash,
 		Timestamp:          uint64(hdr.Timestamp.UnixNano()),
+		View:               hdr.View,
+		ParentView:         hdr.ParentView,
+		ParentVoterIndices: hdr.ParentVoterIndices,
+		ParentVoterSigData: hdr.ParentVoterSigData,
+		ProposerID:         hdr.ProposerID,
+		LastViewTCID:       deriveTimeoutCertificateHashV5(hdr.LastViewTC),
+	}
+	return flow.MakeID(dst)
+}
+
+func deriveBlockHashV8(hdr flowHeader) flow.Identifier {
+	dst := struct {
+		ChainID            flow.ChainID
+		ParentID           flow.Identifier
+		Height             uint64
+		PayloadHash        flow.Identifier
+		Timestamp          uint64
+		View               uint64
+		ParentView         uint64
+		ParentVoterIndices []byte
+		ParentVoterSigData []byte
+		ProposerID         flow.Identifier
+		LastViewTCID       flow.Identifier
+	}{
+		ChainID:            hdr.ChainID,
+		ParentID:           hdr.ParentID,
+		Height:             hdr.Height,
+		PayloadHash:        hdr.PayloadHash,
+		Timestamp:          uint64(hdr.Timestamp.UnixMilli()),
 		View:               hdr.View,
 		ParentView:         hdr.ParentView,
 		ParentVoterIndices: hdr.ParentVoterIndices,
