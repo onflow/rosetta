@@ -396,7 +396,7 @@ func (c *chainConfig) parseAndValidateSporks(ctx context.Context, result *Chain)
 			Version:   cfg.Version,
 		}
 
-		if spork.Version < 1 || spork.Version > 7 {
+		if spork.Version < 1 || spork.Version > 8 {
 			log.Fatalf(
 				"Invalid .version value for %s-%d in %s",
 				c.Network, id, c.filename,
