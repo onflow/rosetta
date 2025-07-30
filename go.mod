@@ -14,10 +14,10 @@ require (
 	github.com/golang/protobuf v1.5.4
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/libp2p/go-libp2p v0.38.2
-	github.com/onflow/cadence v1.6.2
+	github.com/onflow/cadence v1.6.3
 	github.com/onflow/crypto v0.25.3
-	github.com/onflow/flow-go v0.41.0-rc.1.0.20250721195438-3107b6a7c189
-	github.com/onflow/flow/protobuf/go/flow v0.4.10
+	github.com/onflow/flow-go v0.41.0-rc.1.0.20250730211253-8f200e5fefef
+	github.com/onflow/flow/protobuf/go/flow v0.4.12
 	github.com/rs/zerolog v1.29.0
 	github.com/stretchr/testify v1.10.0
 	go.opentelemetry.io/otel v1.35.0
@@ -45,7 +45,10 @@ require (
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.50.0 // indirect
 	github.com/Jorropo/jsync v1.0.1 // indirect
 	github.com/cncf/xds/go v0.0.0-20250121191232-2f005788dc42 // indirect
+	github.com/cockroachdb/crlib v0.0.0-20241015224233-894974b3ad94 // indirect
 	github.com/cockroachdb/fifo v0.0.0-20240606204812-0bbfbd93a7ce // indirect
+	github.com/cockroachdb/pebble/v2 v2.0.6 // indirect
+	github.com/cockroachdb/swiss v0.0.0-20250624142022-d6e517c1d961 // indirect
 	github.com/crate-crypto/go-ipa v0.0.0-20240724233137-53bbb0ceb27a // indirect
 	github.com/envoyproxy/go-control-plane/envoy v1.32.4 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.2.1 // indirect
@@ -57,7 +60,8 @@ require (
 	github.com/huandu/go-clone v1.6.0 // indirect
 	github.com/huandu/go-clone/generic v1.7.2 // indirect
 	github.com/ipfs/boxo v0.17.1-0.20240131173518-89bceff34bf1 // indirect
-	github.com/ipfs/go-ds-pebble v0.3.1-0.20240828032824-d745b9d3200b // indirect
+	github.com/ipfs/go-ds-pebble v0.5.0 // indirect
+	github.com/jordanschalm/lockctx v0.0.0-20250412215529-226f85c10956 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/onflow/flow-evm-bridge v0.1.0 // indirect
 	github.com/onflow/flow-ft/lib/go/templates v1.0.1 // indirect
@@ -96,7 +100,7 @@ require (
 	cloud.google.com/go/compute/metadata v0.6.0 // indirect
 	cloud.google.com/go/iam v1.5.2 // indirect
 	cloud.google.com/go/storage v1.50.0 // indirect
-	github.com/DataDog/zstd v1.5.2 // indirect
+	github.com/DataDog/zstd v1.5.6-0.20230824185856-869dae002e5e // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/SaveTheRbtz/mph v0.1.1-0.20240117162131-4166ec7869bc // indirect
 	github.com/StackExchange/wmi v1.2.1 // indirect
@@ -127,7 +131,6 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cockroachdb/errors v1.11.3 // indirect
 	github.com/cockroachdb/logtags v0.0.0-20230118201751-21c54148d20b // indirect
-	github.com/cockroachdb/pebble v1.1.2 // indirect
 	github.com/cockroachdb/redact v1.1.5 // indirect
 	github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06 // indirect
 	github.com/consensys/bavard v0.1.22 // indirect
@@ -171,7 +174,7 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/glog v1.2.4 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
-	github.com/golang/snappy v0.0.5-0.20220116011046-fa5810519dcb // indirect
+	github.com/golang/snappy v0.0.5-0.20231225225746-43d5d4cd4e0e // indirect
 	github.com/google/flatbuffers v2.0.8+incompatible // indirect
 	github.com/google/gopacket v1.1.19 // indirect
 	github.com/google/pprof v0.0.0-20241210010833-40e02aabc2ad // indirect
@@ -197,8 +200,8 @@ require (
 	github.com/ipfs/go-block-format v0.2.0 // indirect
 	github.com/ipfs/go-cid v0.4.1 // indirect
 	github.com/ipfs/go-cidutil v0.1.0 // indirect
-	github.com/ipfs/go-datastore v0.6.0 // indirect
-	github.com/ipfs/go-ds-badger2 v0.1.3 // indirect
+	github.com/ipfs/go-datastore v0.8.2 // indirect
+	github.com/ipfs/go-ds-badger2 v0.1.4 // indirect
 	github.com/ipfs/go-ipfs-delay v0.0.1 // indirect
 	github.com/ipfs/go-ipfs-pq v0.0.3 // indirect
 	github.com/ipfs/go-ipfs-util v0.0.3 // indirect
@@ -260,10 +263,10 @@ require (
 	github.com/multiformats/go-varint v0.0.7 // indirect
 	github.com/olekukonko/tablewriter v0.0.5 // indirect
 	github.com/onflow/atree v0.10.0 // indirect
-	github.com/onflow/flow-core-contracts/lib/go/contracts v1.7.1 // indirect; v1.2.4-0.20230703193002-53362441b57d // indirect
+	github.com/onflow/flow-core-contracts/lib/go/contracts v1.7.3 // indirect; v1.2.4-0.20230703193002-53362441b57d // indirect
 	github.com/onflow/flow-core-contracts/lib/go/templates v1.7.1 // indirect; v1.2.3 // indirect
 	github.com/onflow/flow-ft/lib/go/contracts v1.0.1 // indirect
-	github.com/onflow/flow-go-sdk v1.6.1 // indirect
+	github.com/onflow/flow-go-sdk v1.6.2 // indirect
 	github.com/onflow/flow-nft/lib/go/contracts v1.2.4 // indirect
 	github.com/onflow/go-ethereum v1.15.10 // indirect
 	github.com/onflow/sdks v0.6.0-preview.1 // indirect
