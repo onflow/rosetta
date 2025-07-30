@@ -437,13 +437,13 @@ func deriveCollectionGuaranteeID(spork *config.Spork, guarantee *entities.Collec
 		return flow.MakeID(struct {
 			CollectionID     flow.Identifier
 			ReferenceBlockID flow.Identifier
-			ChainID          flow.ChainID
+			ClusterChainID   flow.ChainID
 			SignerIndices    []byte
 			Signature        crypto.Signature
 		}{
 			CollectionID:     toFlowIdentifier(guarantee.CollectionId),
 			ReferenceBlockID: toFlowIdentifier(guarantee.ReferenceBlockId),
-			ChainID:          flow.ChainID(""), // TODO update Access API
+			ClusterChainID:   flow.ChainID(guarantee.ClusterChainId),
 			SignerIndices:    guarantee.SignerIndices,
 			Signature:        guarantee.Signature,
 		})
