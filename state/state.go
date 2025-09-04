@@ -15,7 +15,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dgraph-io/badger/v2"
 	flowcrypto "github.com/onflow/crypto"
 	"github.com/onflow/flow-go/cmd/bootstrap/utils"
 	hotstuff "github.com/onflow/flow-go/consensus/hotstuff/model"
@@ -24,7 +23,9 @@ import (
 	"github.com/onflow/flow-go/module/chainsync"
 	"github.com/onflow/flow-go/module/compliance"
 	"github.com/onflow/flow-go/storage"
-	"github.com/onflow/flow-go/storage/badger/operation"
+	"github.com/onflow/flow-go/storage/operation"
+	"github.com/onflow/flow-go/storage/operation/pebbleimpl"
+	pebblestorage "github.com/onflow/flow-go/storage/pebble"
 	"github.com/onflow/rosetta/cache"
 	"github.com/onflow/rosetta/config"
 	"github.com/onflow/rosetta/indexdb"
@@ -52,7 +53,7 @@ type Indexer struct {
 	Chain               *config.Chain
 	Store               *indexdb.Store
 	accts               map[string]bool
-	consensus           *badger.DB
+	consensus           storage.DB
 	feeAddr             []byte
 	jobs                chan uint64
 	lastIndexed         *model.BlockMeta
@@ -390,7 +391,7 @@ func (i *Indexer) indexLiveSpork(rctx context.Context, spork *config.Spork, last
 			}
 			if useConsensus {
 				blockID := flow.Identifier{}
-				err := i.consensus.View(operation.LookupBlockHeight(height, &blockID))
+				err := operation.LookupBlockHeight(i.consensus.Reader(), height, &blockID)
 				if err != nil {
 					log.Errorf(
 						"Failed to get block ID for height %d from consensus: %s",
@@ -427,7 +428,7 @@ func (i *Indexer) indexLiveSpork(rctx context.Context, spork *config.Spork, last
 					blockID := flow.Identifier{}
 					copy(blockID[:], seal.BlockId)
 					sealID := flow.Identifier{}
-					err := i.consensus.View(operation.LookupBySealedBlockID(blockID, &sealID))
+					err := operation.LookupBySealedBlockID(i.consensus.Reader(), blockID, &sealID)
 					if err != nil {
 						log.Errorf(
 							"Failed to get seal ID for block %x from consensus: %s",
@@ -436,7 +437,7 @@ func (i *Indexer) indexLiveSpork(rctx context.Context, spork *config.Spork, last
 						continue inner
 					}
 					blockSeal := &flow.Seal{}
-					err = i.consensus.View(operation.RetrieveSeal(sealID, blockSeal))
+					err = operation.RetrieveSeal(i.consensus.Reader(), sealID, blockSeal)
 					if err != nil {
 						log.Errorf(
 							"Failed to get seal %x for block %x from consensus: %s",
@@ -626,7 +627,7 @@ func (i *Indexer) nextBackoff(d time.Duration) time.Duration {
 func (i *Indexer) onBlockFinalized(f *hotstuff.Block) {
 	log.Infof(
 		"Got finalized block via consensus follower: %x (block timestamp: %s)",
-		f.BlockID[:], f.Timestamp.Format(time.RFC3339),
+		f.BlockID[:], time.Unix(int64(f.Timestamp), 0).UTC().Format(time.RFC3339),
 	)
 }
 
@@ -635,11 +636,12 @@ func (i *Indexer) runConsensusFollower(ctx context.Context) {
 	sporkDir := i.Chain.PathFor(spork.String())
 	i.downloadRootState(ctx, spork, sporkDir)
 	dbDir := filepath.Join(sporkDir, "consensus")
-	opts := badger.DefaultOptions(dbDir).WithLogger(log.Badger{Prefix: "consensus"})
-	db, err := badger.Open(opts)
+	logger := log.Badger{Prefix: "consensus"}
+	pebbleDB, err := pebblestorage.SafeOpen(logger, dbDir)
 	if err != nil {
 		log.Fatalf("Failed to open consensus database at %s: %s", dbDir, err)
 	}
+	db := pebbleimpl.ToDB(pebbleDB)
 	// Initialize a private key for joining the unstaked peer-to-peer network.
 	// This can be ephemeral, so we generate a new one each time we start.
 	seed := make([]byte, flowcrypto.KeyGenSeedMinLen)
@@ -675,7 +677,7 @@ func (i *Indexer) runConsensusFollower(ctx context.Context) {
 		follower.WithComplianceConfig(&compliance.Config{
 			SkipNewProposalsThreshold: 5 * compliance.MinSkipNewProposalsThreshold,
 		}),
-		follower.WithDB(db),
+		follower.WithProtocolDB(db),
 		follower.WithLogLevel("info"),
 		follower.WithSyncCoreConfig(&chainsync.Config{
 			MaxAttempts:   5,
