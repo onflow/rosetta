@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -32,6 +33,7 @@ import (
 	"github.com/onflow/rosetta/log"
 	"github.com/onflow/rosetta/model"
 	"github.com/onflow/rosetta/process"
+	"github.com/rs/zerolog"
 	"golang.org/x/crypto/openpgp"
 	"golang.org/x/crypto/openpgp/armor"
 	"google.golang.org/grpc/codes"
@@ -636,8 +638,7 @@ func (i *Indexer) runConsensusFollower(ctx context.Context) {
 	sporkDir := i.Chain.PathFor(spork.String())
 	i.downloadRootState(ctx, spork, sporkDir)
 	dbDir := filepath.Join(sporkDir, "consensus")
-	logger := log.Badger{Prefix: "consensus"}
-	pebbleDB, err := pebblestorage.SafeOpen(logger, dbDir)
+	pebbleDB, err := pebblestorage.SafeOpen(NewPrefixedLogger("consensus"), dbDir)
 	if err != nil {
 		log.Fatalf("Failed to open consensus database at %s: %s", dbDir, err)
 	}
@@ -765,4 +766,42 @@ type stateSnapshotHeader struct {
 
 type stateSnapshotSeal struct {
 	BlockID string
+}
+
+// NewPrefixedLogger creates a zerolog.Logger with a given prefix.
+// It respects LOG_LEVEL and JSON_LOGS env vars like the zap setup.
+func NewPrefixedLogger(prefix string) zerolog.Logger {
+	// decide writer: console vs JSON
+	var w zerolog.LevelWriter
+	jsonLogs := true
+	switch strings.ToLower(os.Getenv("JSON_LOGS")) {
+	case "", "disable", "disabled", "false", "off", "0":
+		jsonLogs = false
+	}
+	if jsonLogs {
+		w = os.Stderr // JSON is default for zerolog
+	} else {
+		cw := zerolog.NewConsoleWriter(func(w *zerolog.ConsoleWriter) {
+			w.Out = os.Stderr
+			w.TimeFormat = zerolog.TimeFormatUnix
+		})
+		w = cw
+	}
+
+	// set level from LOG_LEVEL
+	levelStr := strings.ToLower(os.Getenv("LOG_LEVEL"))
+	if levelStr == "" {
+		levelStr = "info"
+	}
+	level, err := zerolog.ParseLevel(levelStr)
+	if err != nil {
+		level = zerolog.InfoLevel
+	}
+	zerolog.SetGlobalLevel(level)
+
+	// build logger with prefix and timestamp
+	return zerolog.New(w).With().
+		Timestamp().
+		Str("prefix", prefix).
+		Logger()
 }
