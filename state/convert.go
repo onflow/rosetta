@@ -112,8 +112,29 @@ func deriveBlockHash(spork *config.Spork, hdr flowHeader) flow.Identifier {
 		return deriveBlockHashV3(hdr)
 	case 5, 6, 7:
 		return deriveBlockHashV5(hdr)
+	case 8:
+		return deriveBlockHashV8(hdr)
 	}
 	panic("unreachable code")
+}
+
+func deriveTimeoutCertificateHashV5(tc *flow.TimeoutCertificate) flow.Identifier {
+	if tc == nil {
+		return flow.ZeroID
+	}
+	return flow.MakeID(struct {
+		View          uint64
+		NewestQCViews []uint64
+		NewestQCID    flow.Identifier
+		SignerIndices []byte
+		SigData       crypto.Signature
+	}{
+		View:          tc.View,
+		NewestQCViews: tc.NewestQCViews,
+		NewestQCID:    tc.NewestQC.ID(),
+		SignerIndices: tc.SignerIndices,
+		SigData:       tc.SigData,
+	})
 }
 
 func deriveBlockHashV1(hdr flowHeader) flow.Identifier {
@@ -190,6 +211,35 @@ func deriveBlockHashV5(hdr flowHeader) flow.Identifier {
 		ParentVoterIndices: hdr.ParentVoterIndices,
 		ParentVoterSigData: hdr.ParentVoterSigData,
 		ProposerID:         hdr.ProposerID,
+		LastViewTCID:       deriveTimeoutCertificateHashV5(hdr.LastViewTC),
+	}
+	return flow.MakeID(dst)
+}
+
+func deriveBlockHashV8(hdr flowHeader) flow.Identifier {
+	dst := struct {
+		ChainID            flow.ChainID
+		ParentID           flow.Identifier
+		Height             uint64
+		PayloadHash        flow.Identifier
+		Timestamp          uint64
+		View               uint64
+		ParentView         uint64
+		ParentVoterIndices []byte
+		ParentVoterSigData []byte
+		ProposerID         flow.Identifier
+		LastViewTCID       flow.Identifier
+	}{
+		ChainID:            hdr.ChainID,
+		ParentID:           hdr.ParentID,
+		Height:             hdr.Height,
+		PayloadHash:        hdr.PayloadHash,
+		Timestamp:          uint64(hdr.Timestamp.UnixMilli()),
+		View:               hdr.View,
+		ParentView:         hdr.ParentView,
+		ParentVoterIndices: hdr.ParentVoterIndices,
+		ParentVoterSigData: hdr.ParentVoterSigData,
+		ProposerID:         hdr.ProposerID,
 		LastViewTCID:       hdr.LastViewTC.ID(),
 	}
 	return flow.MakeID(dst)
@@ -203,6 +253,8 @@ func deriveEventsHash(spork *config.Spork, events []flowEvent) flow.Identifier {
 		return deriveEventsHashV2(events)
 	case 4, 5, 6, 7:
 		return deriveEventsHashV4(events)
+	case 8:
+		return deriveEventsHashV8(events)
 	}
 	panic("unreachable code")
 }
@@ -293,11 +345,42 @@ func deriveEventsHashV4(events []flowEvent) flow.Identifier {
 	return root
 }
 
+func deriveEventsHashV8(events []flowEvent) flow.Identifier {
+	tree, err := merkle.NewTree(flow.IdentifierLen)
+	if err != nil {
+		log.Fatalf("Failed to instantiate merkle tree: %s", err)
+	}
+	for _, src := range events {
+		dst := struct {
+			Type             string
+			TxID             []byte
+			TransactionIndex uint32
+			EventIndex       uint32
+			Payload          []byte
+		}{
+			Type:             string(src.Type),
+			TxID:             src.TransactionID[:],
+			TransactionIndex: src.TransactionIndex,
+			EventIndex:       src.EventIndex,
+			Payload:          src.Payload,
+		}
+		fp := fingerprint.Fingerprint(dst)
+		eventID := flow.MakeIDFromFingerPrint(fp)
+		_, err = tree.Put(eventID[:], fp)
+		if err != nil {
+			log.Fatalf("Failed to put event into the merkle tree: %s", err)
+		}
+	}
+	var root flow.Identifier
+	copy(root[:], tree.Hash())
+	return root
+}
+
 func deriveExecutionResult(spork *config.Spork, exec flowExecutionResult) flow.Identifier {
 	switch spork.Version {
 	case 1:
 		return deriveExecutionResultV1(exec)
-	case 2, 3, 4, 5, 6, 7:
+	case 2, 3, 4, 5, 6, 7, 8:
 		return deriveExecutionResultV2(exec)
 	}
 	panic("unreachable code")
@@ -333,6 +416,40 @@ func deriveExecutionResultV2(exec flowExecutionResult) flow.Identifier {
 		ExecutionDataID:  exec.ExecutionDataID,
 	}
 	return flow.MakeID(dst)
+}
+
+func deriveExecutionReceiptHash(spork *config.Spork, receipt flow.ExecutionReceiptStub) flow.Identifier {
+	switch spork.Version {
+	case 1, 2, 3, 4, 5, 6, 7:
+		return receipt.UnsignedExecutionReceiptStub.ID()
+	case 8:
+		return receipt.ID()
+	default:
+		panic("unreachable code")
+	}
+}
+
+func deriveCollectionGuaranteeID(spork *config.Spork, guarantee *entities.CollectionGuarantee) flow.Identifier {
+	switch spork.Version {
+	case 1, 2, 3, 4, 5, 6, 7:
+		return toFlowIdentifier(guarantee.CollectionId)
+	case 8:
+		return flow.MakeID(struct {
+			CollectionID     flow.Identifier
+			ReferenceBlockID flow.Identifier
+			ClusterChainID   flow.ChainID
+			SignerIndices    []byte
+			Signature        crypto.Signature
+		}{
+			CollectionID:     toFlowIdentifier(guarantee.CollectionId),
+			ReferenceBlockID: toFlowIdentifier(guarantee.ReferenceBlockId),
+			ClusterChainID:   flow.ChainID(guarantee.ClusterChainId),
+			SignerIndices:    guarantee.SignerIndices,
+			Signature:        guarantee.Signature,
+		})
+	default:
+		panic("unreachable code")
+	}
 }
 
 func toFlowIdentifier(v []byte) flow.Identifier {
@@ -409,11 +526,12 @@ func verifyBlockHash(spork *config.Spork, hash []byte, height uint64, hdr *entit
 		)
 		return false
 	}
-	var collectionIDs []flow.Identifier
+	var guaranteeIDs []flow.Identifier
 	for _, src := range block.CollectionGuarantees {
-		collectionIDs = append(collectionIDs, toFlowIdentifier(src.CollectionId))
+		guaranteeID := deriveCollectionGuaranteeID(spork, src)
+		guaranteeIDs = append(guaranteeIDs, guaranteeID)
 	}
-	collectionHash := flow.MerkleRoot(collectionIDs...)
+	collectionHash := flow.MerkleRoot(guaranteeIDs...)
 	var sealIDs []flow.Identifier
 	for _, src := range block.BlockSeals {
 		seal := &flow.Seal{
@@ -433,13 +551,15 @@ func verifyBlockHash(spork *config.Spork, hash []byte, height uint64, hdr *entit
 	sealHash := flow.MerkleRoot(sealIDs...)
 	var receiptIDs []flow.Identifier
 	for _, src := range block.ExecutionReceiptMetaList {
-		receipt := flow.ExecutionReceiptMeta{
-			ExecutorID:        toFlowIdentifier(src.ExecutorId),
-			ResultID:          toFlowIdentifier(src.ResultId),
+		receipt := flow.ExecutionReceiptStub{
+			UnsignedExecutionReceiptStub: flow.UnsignedExecutionReceiptStub{
+				ExecutorID: toFlowIdentifier(src.ExecutorId),
+				ResultID:   toFlowIdentifier(src.ResultId),
+				Spocks:     toSignatureSlice(src.Spocks),
+			},
 			ExecutorSignature: src.ExecutorSignature,
-			Spocks:            toSignatureSlice(src.Spocks),
 		}
-		receiptIDs = append(receiptIDs, receipt.ID())
+		receiptIDs = append(receiptIDs, deriveExecutionReceiptHash(spork, receipt))
 	}
 	receiptHash := flow.MerkleRoot(receiptIDs...)
 
@@ -466,6 +586,7 @@ func verifyBlockHash(spork *config.Spork, hash []byte, height uint64, hdr *entit
 	}
 	return true
 }
+
 func derivePayloadHash(
 	sporkVersion int,
 	collectionHash flow.Identifier,
@@ -477,7 +598,7 @@ func derivePayloadHash(
 	switch sporkVersion {
 	case 1, 2, 3, 4, 5, 6:
 		return derivePayloadHashV1(collectionHash, sealHash, receiptHash, resultHash)
-	case 7:
+	case 7, 8:
 		return derivePayloadHashV7(collectionHash, sealHash, receiptHash, resultHash, protocolStateId)
 	default:
 		panic("unreachable code")

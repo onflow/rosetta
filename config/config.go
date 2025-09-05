@@ -112,7 +112,10 @@ type Spork struct {
 	Next        *Spork
 	Prev        *Spork
 	RootBlock   uint64
-	Version     int
+	// Version is a Rosetta-internal version number that tracks Rosetta compatibility with Flow network versions.
+	// This version number is incremented each time there is a Flow network upgrades which includes a breaking change for Rosetta.
+	// Not all Flow network upgrades cause breaking changes for Rosetta, so this version number is not incremented for every network upgrade.
+	Version int
 }
 
 func (s *Spork) String() string {
@@ -396,7 +399,7 @@ func (c *chainConfig) parseAndValidateSporks(ctx context.Context, result *Chain)
 			Version:   cfg.Version,
 		}
 
-		if spork.Version < 1 || spork.Version > 7 {
+		if spork.Version < 1 || spork.Version > 8 {
 			log.Fatalf(
 				"Invalid .version value for %s-%d in %s",
 				c.Network, id, c.filename,

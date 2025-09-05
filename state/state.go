@@ -626,7 +626,7 @@ func (i *Indexer) nextBackoff(d time.Duration) time.Duration {
 func (i *Indexer) onBlockFinalized(f *hotstuff.Block) {
 	log.Infof(
 		"Got finalized block via consensus follower: %x (block timestamp: %s)",
-		f.BlockID[:], f.Timestamp.Format(time.RFC3339),
+		f.BlockID[:], time.UnixMilli(int64(f.Timestamp)).Format(time.RFC3339),
 	)
 }
 
