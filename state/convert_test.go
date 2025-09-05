@@ -20,6 +20,42 @@ var accessAddr = "access-001.mainnet24.nodes.onflow.org:9000"
 var startBlockHeight uint64 = 65264620
 var endBlockHeight uint64 = 65264630
 
+// sporkTemplate is used to construct a [config.Spork] for tests.
+type sporkTemplate struct {
+	AccessNodes []access.NodeConfig
+	Chain       config.Chain
+	// RootBlock doesn't need to be the actual root block of the spork during the convert tests, since
+	// we directly provide the spork structure and don't use the indexer for these tests.
+	RootBlock uint64
+	// Version is a Rosetta-internal version number that tracks Rosetta compatibility with Flow network versions.
+	// This version number is incremented each time there is a Flow network upgrades which includes a breaking change for Rosetta.
+	// Not all Flow network upgrades cause breaking changes for Rosetta, so this version number is not incremented for every network upgrade.
+	Version int
+}
+
+func (t *sporkTemplate) create(ctx context.Context) *config.Spork {
+	return &config.Spork{
+		AccessNodes: access.New(ctx, t.AccessNodes, nil),
+		Chain:       &t.Chain,
+		RootBlock:   t.RootBlock,
+		Version:     t.Version,
+	}
+}
+
+var Mainnet24_SporkVersion6 = sporkTemplate{
+	AccessNodes: []access.NodeConfig{{Address: "access-001.mainnet24.nodes.onflow.org:9000"}},
+	Chain:       config.Chain{Network: "mainnet"},
+	RootBlock:   65264619,
+	Version:     6,
+}
+
+var Mainnet26_SporkVersion7 = sporkTemplate{
+	AccessNodes: []access.NodeConfig{{Address: "access-001.mainnet26.nodes.onflow.org:9000"}},
+	Chain:       config.Chain{Network: "mainnet"},
+	RootBlock:   125_000_000,
+	Version:     7,
+}
+
 func TestVerifyBlockHash(t *testing.T) {
 	// load mainnet config and get blocks exactly as state.go
 	ctx := context.Background()
