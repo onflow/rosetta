@@ -16,10 +16,6 @@ import (
 	"github.com/onflow/rosetta/config"
 )
 
-var accessAddr = "access-001.mainnet24.nodes.onflow.org:9000"
-var startBlockHeight uint64 = 65264620
-var endBlockHeight uint64 = 65264630
-
 // sporkTemplate is used to construct a [config.Spork] for tests.
 type sporkTemplate struct {
 	AccessNodes []access.NodeConfig
@@ -232,16 +228,4 @@ func TestExecutionResultConsistency_ChunkServiceEventCountField(t *testing.T) {
 		rosettaResultID := deriveExecutionResultV2(psv2RosettaResult)
 		assert.Equal(t, psv2Result.ID(), rosettaResultID)
 	})
-}
-
-func createSpork(ctx context.Context) (*config.Spork, error) {
-	addr := accessAddr
-	pool := access.New(ctx, []access.NodeConfig{{Address: addr}}, nil)
-	chain := &config.Chain{Network: "mainnet"}
-	return &config.Spork{
-		Version:     6,
-		Chain:       chain,
-		AccessNodes: pool,
-		RootBlock:   65264619,
-	}, nil
 }
