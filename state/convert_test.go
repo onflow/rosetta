@@ -99,29 +99,18 @@ func VerifyExecutionResultsForSpork(t *testing.T, ctx context.Context, spork *co
 	sealedResults := make(map[string]string)
 	for blockHeight := startHeight; blockHeight < endHeight; blockHeight++ {
 		block, err := client.BlockByHeight(ctx, blockHeight)
-		if err != nil {
-			require.Fail(t, err.Error())
-		}
+		require.NoError(t, err)
 		execResult, err := client.ExecutionResultForBlockID(ctx, block.Id)
-		if err != nil {
-			require.Fail(t, err.Error())
-		}
+		require.NoError(t, err)
 		for _, seal := range block.BlockSeals {
 			sealedResults[string(seal.BlockId)] = string(seal.ResultId)
 		}
-		var resultID flow.Identifier
 		exec, ok := convertExecutionResult(spork.Version, block.Id, blockHeight, execResult)
-		if ok {
-			resultID = deriveExecutionResult(spork, exec)
-		}
-		if !ok {
-			require.Fail(t, "unable to covert from either hash")
-		}
+		require.True(t, ok, "unable to convert execution result")
+		resultID := deriveExecutionResult(spork, exec)
 		sealedResult, foundOk := sealedResults[string(block.Id)]
 		if foundOk {
-			if string(resultID[:]) != sealedResult {
-				require.Fail(t, "target error")
-			}
+			require.Equal(t, string(resultID[:]), sealedResult, "target error")
 		}
 	}
 }
@@ -143,6 +132,7 @@ func VerifyEventsHashForSpork(t *testing.T, ctx context.Context, spork *config.S
 	client := spork.AccessNodes.Client()
 	for blockHeight := startHeight; blockHeight < endHeight; blockHeight++ {
 		block, err := client.BlockByHeight(ctx, blockHeight)
+		require.NoError(t, err)
 		txns, err := client.TransactionsByBlockID(ctx, block.Id)
 		require.NoError(t, err)
 		txnResults, err := client.TransactionResultsByBlockID(ctx, block.Id)
