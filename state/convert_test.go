@@ -105,13 +105,13 @@ func VerifyExecutionResultsForSpork(t *testing.T, ctx context.Context, spork *co
 		require.NoError(t, err)
 		// Store the Result ID for any seals of previous blocks
 		for _, seal := range block.BlockSeals {
-			sealedResults[flow.Identifier(seal.BlockId)] = flow.Identifier(seal.ResultId)
+			sealedResults[toFlowIdentifier(seal.BlockId)] = toFlowIdentifier(seal.ResultId)
 		}
 		// Compute the result ID for the current block
 		exec, ok := convertExecutionResult(spork.Version, block.Id, blockHeight, execResult)
 		require.True(t, ok, "unable to convert execution result")
 		resultID := deriveExecutionResult(spork, exec)
-		computedResults[flow.Identifier(block.Id)] = resultID
+		computedResults[toFlowIdentifier(block.Id)] = resultID
 	}
 	checkedResults := 0
 	for blockID := range computedResults {
