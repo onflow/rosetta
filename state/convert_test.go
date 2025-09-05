@@ -57,14 +57,21 @@ var Mainnet26_SporkVersion7 = sporkTemplate{
 }
 
 func TestVerifyBlockHash(t *testing.T) {
-	// load mainnet config and get blocks exactly as state.go
-	ctx := context.Background()
-	spork, err := createSpork(ctx)
-	if err != nil {
-		require.Fail(t, err.Error())
-	}
+	t.Run("mainnet24 spork version 6", func(t *testing.T) {
+		ctx := context.Background()
+		spork := Mainnet24_SporkVersion6.create(ctx)
+		VerifyBlocksForSpork(t, ctx, spork, 65264620, 65264630)
+	})
+	t.Run("mainnet26 spork version 7", func(t *testing.T) {
+		ctx := context.Background()
+		spork := Mainnet26_SporkVersion7.create(ctx)
+		VerifyBlocksForSpork(t, ctx, spork, 125_000_001, 125_000_011)
+	})
+}
+
+func VerifyBlocksForSpork(t *testing.T, ctx context.Context, spork *config.Spork, startHeight uint64, endHeight uint64) {
 	client := spork.AccessNodes.Client()
-	for blockHeight := startBlockHeight; blockHeight < endBlockHeight; blockHeight++ {
+	for blockHeight := startHeight; blockHeight < endHeight; blockHeight++ {
 		block, err := client.BlockByHeight(ctx, blockHeight)
 		if err != nil {
 			require.Fail(t, err.Error())
@@ -79,14 +86,22 @@ func TestVerifyBlockHash(t *testing.T) {
 }
 
 func TestVerifyExecutionResultHash(t *testing.T) {
-	ctx := context.Background()
-	spork, err := createSpork(ctx)
-	if err != nil {
-		require.Fail(t, err.Error())
-	}
+	t.Run("mainnet24 spork version 6", func(t *testing.T) {
+		ctx := context.Background()
+		spork := Mainnet24_SporkVersion6.create(ctx)
+		VerifyExecutionResultsForSpork(t, ctx, spork, 65264620, 65264630)
+	})
+	t.Run("mainnet26 spork version 7", func(t *testing.T) {
+		ctx := context.Background()
+		spork := Mainnet26_SporkVersion7.create(ctx)
+		VerifyExecutionResultsForSpork(t, ctx, spork, 125_000_001, 125_000_011)
+	})
+}
+
+func VerifyExecutionResultsForSpork(t *testing.T, ctx context.Context, spork *config.Spork, startHeight uint64, endHeight uint64) {
 	client := spork.AccessNodes.Client()
 	sealedResults := make(map[string]string)
-	for blockHeight := startBlockHeight; blockHeight < endBlockHeight; blockHeight++ {
+	for blockHeight := startHeight; blockHeight < endHeight; blockHeight++ {
 		block, err := client.BlockByHeight(ctx, blockHeight)
 		if err != nil {
 			require.Fail(t, err.Error())
@@ -116,13 +131,21 @@ func TestVerifyExecutionResultHash(t *testing.T) {
 }
 
 func TestDeriveEventsHash(t *testing.T) {
-	ctx := context.Background()
-	spork, err := createSpork(ctx)
-	if err != nil {
-		assert.Fail(t, err.Error())
-	}
+	t.Run("mainnet24 / spork version 6", func(t *testing.T) {
+		ctx := context.Background()
+		spork := Mainnet24_SporkVersion6.create(ctx)
+		VerifyEventsHashForSpork(t, ctx, spork, 65264620, 65264630)
+	})
+	t.Run("mainnet26 / spork version 7", func(t *testing.T) {
+		ctx := context.Background()
+		spork := Mainnet26_SporkVersion7.create(ctx)
+		VerifyEventsHashForSpork(t, ctx, spork, 125_000_001, 125_000_011)
+	})
+}
+
+func VerifyEventsHashForSpork(t *testing.T, ctx context.Context, spork *config.Spork, startHeight uint64, endHeight uint64) {
 	client := spork.AccessNodes.Client()
-	for blockHeight := startBlockHeight; blockHeight < endBlockHeight; blockHeight++ {
+	for blockHeight := startHeight; blockHeight < endHeight; blockHeight++ {
 		block, err := client.BlockByHeight(ctx, blockHeight)
 		txns, err := client.TransactionsByBlockID(ctx, block.Id)
 		require.NoError(t, err)
