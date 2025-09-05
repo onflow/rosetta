@@ -96,23 +96,33 @@ func TestVerifyExecutionResultHash(t *testing.T) {
 
 func VerifyExecutionResultsForSpork(t *testing.T, ctx context.Context, spork *config.Spork, startHeight uint64, endHeight uint64) {
 	client := spork.AccessNodes.Client()
-	sealedResults := make(map[string]string)
+	sealedResults := make(map[flow.Identifier]flow.Identifier)
+	computedResults := make(map[flow.Identifier]flow.Identifier)
 	for blockHeight := startHeight; blockHeight < endHeight; blockHeight++ {
 		block, err := client.BlockByHeight(ctx, blockHeight)
 		require.NoError(t, err)
 		execResult, err := client.ExecutionResultForBlockID(ctx, block.Id)
 		require.NoError(t, err)
+		// Store the Result ID for any seals of previous blocks
 		for _, seal := range block.BlockSeals {
-			sealedResults[string(seal.BlockId)] = string(seal.ResultId)
+			sealedResults[flow.Identifier(seal.BlockId)] = flow.Identifier(seal.ResultId)
 		}
+		// Compute the result ID for the current block
 		exec, ok := convertExecutionResult(spork.Version, block.Id, blockHeight, execResult)
 		require.True(t, ok, "unable to convert execution result")
 		resultID := deriveExecutionResult(spork, exec)
-		sealedResult, foundOk := sealedResults[string(block.Id)]
-		if foundOk {
-			require.Equal(t, string(resultID[:]), sealedResult, "target error")
+		computedResults[flow.Identifier(block.Id)] = resultID
+	}
+	checkedResults := 0
+	for blockID := range computedResults {
+		if sealedResult, ok := sealedResults[blockID]; ok {
+			// we found a seal for the block with the canonical ResultID
+			require.Equal(t, sealedResult.String(), computedResults[blockID].String(), "mismatched result ID")
+			checkedResults++
 		}
 	}
+	require.NotZero(t, checkedResults)
+	t.Logf("checked results: %d", checkedResults)
 }
 
 func TestDeriveEventsHash(t *testing.T) {
