@@ -24,7 +24,8 @@ import (
 	"github.com/onflow/flow-go/module/chainsync"
 	"github.com/onflow/flow-go/module/compliance"
 	"github.com/onflow/flow-go/storage"
-	"github.com/onflow/flow-go/storage/badger/operation"
+	"github.com/onflow/flow-go/storage/operation"
+	"github.com/onflow/flow-go/storage/operation/badgerimpl"
 	"github.com/onflow/rosetta/cache"
 	"github.com/onflow/rosetta/config"
 	"github.com/onflow/rosetta/indexdb"
@@ -52,7 +53,7 @@ type Indexer struct {
 	Chain               *config.Chain
 	Store               *indexdb.Store
 	accts               map[string]bool
-	consensus           *badger.DB
+	consensus           storage.DB
 	feeAddr             []byte
 	jobs                chan uint64
 	lastIndexed         *model.BlockMeta
@@ -390,7 +391,7 @@ func (i *Indexer) indexLiveSpork(rctx context.Context, spork *config.Spork, last
 			}
 			if useConsensus {
 				blockID := flow.Identifier{}
-				err := i.consensus.View(operation.LookupBlockHeight(height, &blockID))
+				err := operation.LookupBlockHeight(i.consensus.Reader(), height, &blockID)
 				if err != nil {
 					log.Errorf(
 						"Failed to get block ID for height %d from consensus: %s",
@@ -427,7 +428,7 @@ func (i *Indexer) indexLiveSpork(rctx context.Context, spork *config.Spork, last
 					blockID := flow.Identifier{}
 					copy(blockID[:], seal.BlockId)
 					sealID := flow.Identifier{}
-					err := i.consensus.View(operation.LookupBySealedBlockID(blockID, &sealID))
+					err := operation.LookupBySealedBlockID(i.consensus.Reader(), blockID, &sealID)
 					if err != nil {
 						log.Errorf(
 							"Failed to get seal ID for block %x from consensus: %s",
@@ -436,7 +437,7 @@ func (i *Indexer) indexLiveSpork(rctx context.Context, spork *config.Spork, last
 						continue inner
 					}
 					blockSeal := &flow.Seal{}
-					err = i.consensus.View(operation.RetrieveSeal(sealID, blockSeal))
+					err = operation.RetrieveSeal(i.consensus.Reader(), sealID, blockSeal)
 					if err != nil {
 						log.Errorf(
 							"Failed to get seal %x for block %x from consensus: %s",
@@ -640,6 +641,7 @@ func (i *Indexer) runConsensusFollower(ctx context.Context) {
 	if err != nil {
 		log.Fatalf("Failed to open consensus database at %s: %s", dbDir, err)
 	}
+	protocolDB := badgerimpl.ToDB(db)
 	// Initialize a private key for joining the unstaked peer-to-peer network.
 	// This can be ephemeral, so we generate a new one each time we start.
 	seed := make([]byte, flowcrypto.KeyGenSeedMinLen)
@@ -675,7 +677,7 @@ func (i *Indexer) runConsensusFollower(ctx context.Context) {
 		follower.WithComplianceConfig(&compliance.Config{
 			SkipNewProposalsThreshold: 5 * compliance.MinSkipNewProposalsThreshold,
 		}),
-		follower.WithDB(db),
+		follower.WithProtocolDB(protocolDB),
 		follower.WithLogLevel("info"),
 		follower.WithSyncCoreConfig(&chainsync.Config{
 			MaxAttempts:   5,
@@ -688,7 +690,7 @@ func (i *Indexer) runConsensusFollower(ctx context.Context) {
 	if err != nil {
 		log.Fatalf("Failed to create the consensus follower: %s", err)
 	}
-	i.consensus = db
+	i.consensus = protocolDB
 	ctx, cancel := context.WithCancel(ctx)
 	process.SetExitHandler(cancel)
 	follow.AddOnBlockFinalizedConsumer(i.onBlockFinalized)
