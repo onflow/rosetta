@@ -497,7 +497,7 @@ func ChunksToV8(chunks []*flowChunk) []*flow.Chunk {
 				CollectionIndex:      chunk.CollectionIndex,
 				StartState:           chunk.StartState,
 				EventCollection:      chunk.EventCollection,
-				ServiceEventCount:    chunk.ServiceEventCount,
+				ServiceEventCount:    *chunk.ServiceEventCount,
 				BlockID:              chunk.BlockID,
 				TotalComputationUsed: chunk.TotalComputationUsed,
 				NumberOfTransactions: chunk.NumberOfTransactions,
