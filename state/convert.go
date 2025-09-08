@@ -17,7 +17,6 @@ import (
 	"github.com/onflow/flow-go/model/flow"
 	"github.com/onflow/flow-go/storage/merkle"
 	"github.com/onflow/flow/protobuf/go/flow/entities"
-
 	"github.com/onflow/rosetta/access"
 	"github.com/onflow/rosetta/config"
 	"github.com/onflow/rosetta/log"
@@ -53,23 +52,53 @@ func convertExecutionResult(sporkVersion int, hash []byte, height uint64, result
 	return exec, true
 }
 
-func convertChunk(sporkVersion int, protobufChunk *entities.Chunk) (*flow.Chunk, error) {
-	if sporkVersion < 7 {
-		chunk, err := convert.MessageToChunk(protobufChunk)
-		if err != nil {
-			return nil, err
-		}
-		// Protocol State v1: ServiceEventCount field not yet added.
-		// Access Nodes running up-to-date software encode nil ServiceEventCount fields in a detectable way,
-		// but we assume that we are querying historical Access Nodes that are running prior software versions.
-		// In this case, the new Protobuf field is automatically set to 0.
-		// See https://github.com/onflow/flow-go/pull/6744 for additional context
-		chunk.ServiceEventCount = nil
-		return chunk, nil
+// convertChunk corresponds to flow-go convert.MessageToChunk, with
+// additional checks to support previous spork versions.
+func convertChunk(sporkVersion int, protobufChunk *entities.Chunk) (*flowChunk, error) {
+	startState, err := flow.ToStateCommitment(protobufChunk.StartState)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse Message start state to Chunk: %w", err)
 	}
-
-	// Protocol State v2+
-	return convert.MessageToChunk(protobufChunk)
+	endState, err := flow.ToStateCommitment(protobufChunk.EndState)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse Message end state to Chunk: %w", err)
+	}
+	var serviceEventCount *uint16
+	switch sporkVersion {
+	case 1, 2, 3, 4, 5, 6:
+		// Protocol State v1: ServiceEventCount field not yet added. When querying a historical access node,
+		// the Protobuf field will be automatically set to 0.
+		serviceEventCount = nil
+	case 7:
+		// Protocol State v2+
+		if (protobufChunk.ServiceEventCount & 0xffff0000) > 0 {
+			// A high-order bit is set: this was used to encode `nil` during spork version 7.
+			// The resulting Chunk is interpreted the same way as during previous spork versions.
+			// See https://github.com/onflow/flow-go/commit/caa8d13bd9f7f18ff3ee51a23e749374f3170d23
+			serviceEventCount = nil
+		} else {
+			c := uint16(protobufChunk.ServiceEventCount)
+			serviceEventCount = &c
+		}
+	case 8:
+		if protobufChunk.ServiceEventCount > 0xffff {
+			return nil, fmt.Errorf("invalid Service Event Count (max allowed is 65535): %d", protobufChunk.ServiceEventCount)
+		}
+		c := uint16(protobufChunk.ServiceEventCount)
+		serviceEventCount = &c
+	}
+	chunk := flowChunk{
+		CollectionIndex:      uint(protobufChunk.CollectionIndex),
+		StartState:           startState,
+		EventCollection:      convert.MessageToIdentifier(protobufChunk.EventCollection),
+		ServiceEventCount:    serviceEventCount,
+		BlockID:              convert.MessageToIdentifier(protobufChunk.BlockId),
+		TotalComputationUsed: protobufChunk.TotalComputationUsed,
+		NumberOfTransactions: uint64(protobufChunk.NumberOfTransactions),
+		Index:                protobufChunk.Index,
+		EndState:             endState,
+	}
+	return &chunk, nil
 }
 
 func decodeEvent(typ string, evt *entities.Event, hash []byte, height uint64) (cadence.Event, error) {
@@ -380,21 +409,115 @@ func deriveExecutionResult(spork *config.Spork, exec flowExecutionResult) flow.I
 	switch spork.Version {
 	case 1:
 		return deriveExecutionResultV1(exec)
-	case 2, 3, 4, 5, 6, 7, 8:
-		return deriveExecutionResultV2(exec)
+	case 2, 3, 4, 5, 6:
+		return deriveExecutionResultV2(exec) // ExecutionDataID field was added
+	case 7:
+		return deriveExecutionResultV7(exec) // Chunk.ServiceEventsCount field was added as pointer
+	case 8:
+		return deriveExecutionResultV8(exec) // Chunk.ServiceEventsCount field was changed to non-pointer
 	}
 	panic("unreachable code")
+}
+
+type ChunkBodyV1 struct {
+	CollectionIndex      uint
+	StartState           flow.StateCommitment
+	EventCollection      flow.Identifier
+	BlockID              flow.Identifier
+	TotalComputationUsed uint64
+	NumberOfTransactions uint64
+}
+
+type ChunkV1 struct {
+	ChunkBodyV1 ChunkBodyV1
+	Index       uint64
+	EndState    flow.StateCommitment
+}
+
+func ChunksToV1(chunks []*flowChunk) []*ChunkV1 {
+	result := make([]*ChunkV1, 0, len(chunks))
+	for _, chunk := range chunks {
+		result = append(result, &ChunkV1{
+			ChunkBodyV1: ChunkBodyV1{
+				CollectionIndex:      chunk.CollectionIndex,
+				StartState:           chunk.StartState,
+				EventCollection:      chunk.EventCollection,
+				BlockID:              chunk.BlockID,
+				TotalComputationUsed: chunk.TotalComputationUsed,
+				NumberOfTransactions: chunk.NumberOfTransactions,
+			},
+			Index:    chunk.Index,
+			EndState: chunk.EndState,
+		})
+	}
+	return result
+}
+
+type ChunkBodyV7 struct {
+	CollectionIndex      uint
+	StartState           flow.StateCommitment
+	EventCollection      flow.Identifier
+	ServiceEventCount    *uint16
+	BlockID              flow.Identifier
+	TotalComputationUsed uint64
+	NumberOfTransactions uint64
+}
+
+type ChunkV7 struct {
+	ChunkBodyV7 ChunkBodyV7
+	Index       uint64
+	EndState    flow.StateCommitment
+}
+
+func ChunksToV7(chunks []*flowChunk) []*ChunkV7 {
+	result := make([]*ChunkV7, 0, len(chunks))
+	for _, chunk := range chunks {
+		result = append(result, &ChunkV7{
+			ChunkBodyV7: ChunkBodyV7{
+				CollectionIndex:      chunk.CollectionIndex,
+				StartState:           chunk.StartState,
+				EventCollection:      chunk.EventCollection,
+				ServiceEventCount:    chunk.ServiceEventCount,
+				BlockID:              chunk.BlockID,
+				TotalComputationUsed: chunk.TotalComputationUsed,
+				NumberOfTransactions: chunk.NumberOfTransactions,
+			},
+			Index:    chunk.Index,
+			EndState: chunk.EndState,
+		})
+	}
+	return result
+}
+
+func ChunksToV8(chunks []*flowChunk) []*flow.Chunk {
+	result := make([]*flow.Chunk, 0, len(chunks))
+	for _, chunk := range chunks {
+		result = append(result, &flow.Chunk{
+			ChunkBody: flow.ChunkBody{
+				CollectionIndex:      chunk.CollectionIndex,
+				StartState:           chunk.StartState,
+				EventCollection:      chunk.EventCollection,
+				ServiceEventCount:    *chunk.ServiceEventCount,
+				BlockID:              chunk.BlockID,
+				TotalComputationUsed: chunk.TotalComputationUsed,
+				NumberOfTransactions: chunk.NumberOfTransactions,
+			},
+			Index:    chunk.Index,
+			EndState: chunk.EndState,
+		})
+	}
+	return result
 }
 
 func deriveExecutionResultV1(exec flowExecutionResult) flow.Identifier {
 	dst := struct {
 		PreviousResultID flow.Identifier
 		BlockID          flow.Identifier
-		Chunks           flow.ChunkList
+		Chunks           []*ChunkV1
 		ServiceEvents    flow.ServiceEventList
 	}{
 		BlockID:          exec.BlockID,
-		Chunks:           exec.Chunks,
+		Chunks:           ChunksToV1(exec.Chunks),
 		PreviousResultID: exec.PreviousResultID,
 		ServiceEvents:    exec.ServiceEvents,
 	}
@@ -405,12 +528,52 @@ func deriveExecutionResultV2(exec flowExecutionResult) flow.Identifier {
 	dst := struct {
 		PreviousResultID flow.Identifier
 		BlockID          flow.Identifier
+		Chunks           []*ChunkV1
+		ServiceEvents    flow.ServiceEventList
+		ExecutionDataID  flow.Identifier
+	}{
+		BlockID:          exec.BlockID,
+		Chunks:           ChunksToV1(exec.Chunks),
+		PreviousResultID: exec.PreviousResultID,
+		ServiceEvents:    exec.ServiceEvents,
+		ExecutionDataID:  exec.ExecutionDataID,
+	}
+	return flow.MakeID(dst)
+}
+
+func deriveExecutionResultV7(exec flowExecutionResult) flow.Identifier {
+	if len(exec.Chunks) > 0 && exec.Chunks[0].ServiceEventCount == nil {
+		// Chunks are required to consistently have all nil or all non-nil ServiceEventCount.
+		// In the nil case, the hash is calculated the same as in the previous spork version
+		// (i.e. the ServiceEventCount field is totally omitted.)
+		return deriveExecutionResultV2(exec)
+	}
+	dst := struct {
+		PreviousResultID flow.Identifier
+		BlockID          flow.Identifier
+		Chunks           []*ChunkV7
+		ServiceEvents    flow.ServiceEventList
+		ExecutionDataID  flow.Identifier
+	}{
+		BlockID:          exec.BlockID,
+		Chunks:           ChunksToV7(exec.Chunks),
+		PreviousResultID: exec.PreviousResultID,
+		ServiceEvents:    exec.ServiceEvents,
+		ExecutionDataID:  exec.ExecutionDataID,
+	}
+	return flow.MakeID(dst)
+}
+
+func deriveExecutionResultV8(exec flowExecutionResult) flow.Identifier {
+	dst := struct {
+		PreviousResultID flow.Identifier
+		BlockID          flow.Identifier
 		Chunks           flow.ChunkList
 		ServiceEvents    flow.ServiceEventList
 		ExecutionDataID  flow.Identifier
 	}{
 		BlockID:          exec.BlockID,
-		Chunks:           exec.Chunks,
+		Chunks:           ChunksToV8(exec.Chunks),
 		PreviousResultID: exec.PreviousResultID,
 		ServiceEvents:    exec.ServiceEvents,
 		ExecutionDataID:  exec.ExecutionDataID,
@@ -649,10 +812,23 @@ func (f flowEvent) String() string {
 
 type flowExecutionResult struct {
 	BlockID          flow.Identifier
-	Chunks           flow.ChunkList
+	Chunks           []*flowChunk
 	ExecutionDataID  flow.Identifier
 	PreviousResultID flow.Identifier
 	ServiceEvents    flow.ServiceEventList
+}
+
+type flowChunk struct {
+	// Embedded fields of flow.ChunkBody are directly included here.
+	CollectionIndex      uint
+	StartState           flow.StateCommitment
+	EventCollection      flow.Identifier
+	ServiceEventCount    *uint16 // Absent before sporkVersion 7; always present in sporkVersion 8 and later
+	BlockID              flow.Identifier
+	TotalComputationUsed uint64
+	NumberOfTransactions uint64
+	Index                uint64
+	EndState             flow.StateCommitment
 }
 
 type flowHeader struct {
