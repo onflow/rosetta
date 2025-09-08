@@ -91,6 +91,11 @@ func TestVerifyExecutionResultHash(t *testing.T) {
 	})
 }
 
+// VerifyExecutionResultsForSpork verifies that execution result IDs in block seals match those computed
+// from the execution result included in the block payload.
+// This test works by traversing a block height range and comparing all execution results where both the
+// result and its seal appear within the range. In other words, we test the sub-section of the specified block
+// range which is sealed as of `endHeight`. If the range is too short, no results will be checked and the test will error.
 func VerifyExecutionResultsForSpork(t *testing.T, ctx context.Context, spork *config.Spork, startHeight uint64, endHeight uint64) {
 	client := spork.AccessNodes.Client()
 	sealedResults := make(map[flow.Identifier]flow.Identifier)
