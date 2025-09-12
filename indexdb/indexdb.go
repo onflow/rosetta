@@ -17,11 +17,10 @@ import (
 	"github.com/onflow/flow-go/storage/operation"
 	"github.com/onflow/flow-go/storage/operation/pebbleimpl"
 	"github.com/onflow/flow-go/storage/pebble"
-	"github.com/onflow/rosetta/log"
 	"github.com/onflow/rosetta/model"
 	"github.com/onflow/rosetta/process"
 	"github.com/onflow/rosetta/trace"
-	zerolog "github.com/rs/zerolog/log"
+	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -234,15 +233,15 @@ func (s *Store) BlockByHeight(height uint64) (*BlockData, error) {
 func (s *Store) ExportAccounts(filename string) {
 	data, err := s.AccountsInfo()
 	if err != nil {
-		log.Fatalf("Failed to export accounts: %s", err)
+		log.Fatal().Msgf("Failed to export accounts: %s", err)
 	}
 	enc, err := json.Marshal(data)
 	if err != nil {
-		log.Fatalf("Failed to encode data for export: %s", err)
+		log.Fatal().Msgf("Failed to encode data for export: %s", err)
 	}
 	err = os.WriteFile(filename, enc, 0o600)
 	if err != nil {
-		log.Fatalf("Failed to write to %s: %s", filename, err)
+		log.Fatal().Msgf("Failed to write to %s: %s", filename, err)
 	}
 }
 
@@ -258,14 +257,14 @@ func (s *Store) Genesis() *model.BlockMeta {
 	value, closer, err := s.db.Reader().Get([]byte("genesis"))
 	if err != nil {
 		if err != storage.ErrNotFound {
-			log.Fatalf("Failed to get genesis block from the index database: %s", err)
+			log.Fatal().Msgf("Failed to get genesis block from the index database: %s", err)
 		}
 		return nil
 	}
 	defer closer.Close()
 	err = proto.Unmarshal(value, genesis)
 	if err != nil {
-		log.Fatalf("Failed to unmarshal genesis block from the index database: %s", err)
+		log.Fatal().Msgf("Failed to unmarshal genesis block from the index database: %s", err)
 	}
 	s.mu.Lock()
 	s.genesis = genesis
@@ -335,11 +334,11 @@ func (s *Store) Index(ctx context.Context, height uint64, hash []byte, block *mo
 	latest := s.latest
 	s.mu.RUnlock()
 	if latest.Height >= height {
-		log.Infof("Skipping re-indexing of previously indexed block at height %d", height)
+		log.Info().Msgf("Skipping re-indexing of previously indexed block at height %d", height)
 		return nil
 	}
 	if height != latest.Height+1 {
-		log.Fatalf(
+		log.Fatal().Msgf(
 			"Invalid index request for height %d (current height is %d)",
 			height, latest.Height,
 		)
@@ -373,7 +372,7 @@ func (s *Store) Index(ctx context.Context, height uint64, hash []byte, block *mo
 					proxyAccts = append(proxyAccts, key)
 				}
 			default:
-				log.Fatalf(
+				log.Fatal().Msgf(
 					"Unknown transaction operation type: %d (%s)",
 					op.Type, op.Type,
 				)
@@ -396,7 +395,7 @@ func (s *Store) Index(ctx context.Context, height uint64, hash []byte, block *mo
 	blockKey := append([]byte("b"), hval...)
 	blockValue, err := proto.Marshal(block)
 	if err != nil {
-		log.Fatalf("Failed to encode model.IndexedBlock: %s", err)
+		log.Fatal().Msgf("Failed to encode model.IndexedBlock: %s", err)
 	}
 	hash2heightKey := append([]byte("c"), hash...)
 	height2hashKey := append([]byte("d"), hval...)
@@ -407,7 +406,7 @@ func (s *Store) Index(ctx context.Context, height uint64, hash []byte, block *mo
 	}
 	latestEnc, err := proto.Marshal(latest)
 	if err != nil {
-		log.Fatalf("Failed to encode model.BlockMeta: %s", err)
+		log.Fatal().Msgf("Failed to encode model.BlockMeta: %s", err)
 	}
 	err = s.db.WithReaderBatchWriter(func(rbw storage.ReaderBatchWriter) error {
 		for _, update := range updates {
@@ -476,14 +475,14 @@ func (s *Store) Latest() *model.BlockMeta {
 	value, closer, err := s.db.Reader().Get([]byte("latest"))
 	if err != nil {
 		if err != storage.ErrNotFound {
-			log.Fatalf("Failed to get latest block from the index database: %s", err)
+			log.Fatal().Msgf("Failed to get latest block from the index database: %s", err)
 		}
 		return nil
 	}
 	defer closer.Close()
 	err = proto.Unmarshal(value, latest)
 	if err != nil {
-		log.Fatalf("Failed to unmarshal latest block from the index database: %s", err)
+		log.Fatal().Msgf("Failed to unmarshal latest block from the index database: %s", err)
 	}
 	s.mu.Lock()
 	s.latest = latest
@@ -501,7 +500,7 @@ func (s *Store) PurgeProxyAccounts() {
 			return nil
 		}), storage.IteratorOption{})
 	if err != nil {
-		log.Fatalf("Failed to iterate over proxy keys: %s", err)
+		log.Fatal().Msgf("Failed to iterate over proxy keys: %s", err)
 	}
 	accountBalanceKeys := [][]byte{}
 	err = operation.IterateKeys(s.db.Reader(), []byte("a"), []byte("a"), operation.KeyOnlyIterateFunc(
@@ -513,7 +512,7 @@ func (s *Store) PurgeProxyAccounts() {
 			return nil
 		}), storage.IteratorOption{})
 	if err != nil {
-		log.Fatalf("Failed to iterate over account balance keys: %s", err)
+		log.Fatal().Msgf("Failed to iterate over account balance keys: %s", err)
 	}
 	err = s.db.WithReaderBatchWriter(func(rbw storage.ReaderBatchWriter) error {
 		for _, key := range accts {
@@ -529,7 +528,7 @@ func (s *Store) PurgeProxyAccounts() {
 		return nil
 	})
 	if err != nil {
-		log.Fatalf("Failed to purge proxy accounts data: %s", err)
+		log.Fatal().Msgf("Failed to purge proxy accounts data: %s", err)
 	}
 }
 
@@ -618,7 +617,7 @@ func (s *Store) ResetTo(base uint64) error {
 	}
 	latestEnc, err := proto.Marshal(latest)
 	if err != nil {
-		log.Fatalf("Failed to encode model.BlockMeta: %s", err)
+		log.Fatal().Msgf("Failed to encode model.BlockMeta: %s", err)
 	}
 	err = s.db.WithReaderBatchWriter(func(rbw storage.ReaderBatchWriter) error {
 		return rbw.Writer().Set([]byte("latest"), latestEnc)
@@ -646,7 +645,7 @@ func (s *Store) SetGenesis(val *model.BlockMeta) error {
 		Timestamp: val.Timestamp,
 	})
 	if err != nil {
-		log.Fatalf("Failed to encode model.IndexedBlock: %s", err)
+		log.Fatal().Msgf("Failed to encode model.IndexedBlock: %s", err)
 	}
 	hash2heightKey := append([]byte("c"), val.Hash...)
 	height2hashKey := append([]byte("d"), hval...)
@@ -735,15 +734,15 @@ type accountUpdate struct {
 // New opens the database at the given directory and returns the corresponding
 // Store.
 func New(dir string) *Store {
-	dbLog := zerolog.With().Str("pebbledb", "index").Logger()
+	dbLog := log.With().Str("pebbledb", "index").Logger()
 	db, err := pebble.SafeOpen(dbLog, dir)
 	if err != nil {
-		log.Fatalf("Failed to open the index database at %s: %s", dir, err)
+		log.Fatal().Msgf("Failed to open the index database at %s: %s", dir, err)
 	}
 	process.SetExitHandler(func() {
-		log.Infof("Closing the index database")
+		log.Info().Msgf("Closing the index database")
 		if err := db.Close(); err != nil {
-			log.Errorf("Got error closing the index database: %s", err)
+			log.Error().Msgf("Got error closing the index database: %s", err)
 		}
 	})
 	return &Store{
