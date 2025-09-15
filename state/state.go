@@ -643,6 +643,12 @@ func (i *Indexer) runConsensusFollower(ctx context.Context) {
 	if err != nil {
 		log.Fatalf("Failed to open consensus database at %s: %s", dbDir, err)
 	}
+	process.SetExitHandler(func() {
+		log.Infof("Closing the consensus follower database")
+		if err := db.Close(); err != nil {
+			log.Errorf("Got error closing the consensus follower database: %s", err)
+		}
+	})
 	protocolDB := pebbleimpl.ToDB(db)
 	// Initialize a private key for joining the unstaked peer-to-peer network.
 	// This can be ephemeral, so we generate a new one each time we start.
@@ -659,11 +665,11 @@ func (i *Indexer) runConsensusFollower(ctx context.Context) {
 	for _, node := range spork.Consensus.SeedNodes {
 		rawkey, err := hex.DecodeString(node.PublicKey)
 		if err != nil {
-			log.Fatalf("Failed to hex decode the seed node key %q: %s", key, err)
+			log.Fatalf("Failed to hex decode the seed node key %q: %s", node.PublicKey, err)
 		}
 		pubkey, err := flowcrypto.DecodePublicKey(flowcrypto.ECDSAP256, rawkey)
 		if err != nil {
-			log.Fatalf("Failed to decode the seed node key %q: %s", key, err)
+			log.Fatalf("Failed to decode the seed node key %q: %s", rawkey, err)
 		}
 		nodes = append(nodes, follower.BootstrapNodeInfo{
 			Host:             node.Host,
