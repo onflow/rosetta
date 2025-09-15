@@ -43,7 +43,7 @@ gen-originator-account:
 		} \
 	}' "${FLOW_JSON}" > flow.json.tmp && mv flow.json.tmp "${FLOW_JSON}" || { echo "Failed to update ${FLOW_JSON} with jq"; exit 1; }; \
 	jq --arg address "$$address" '.originators += [$$address]' "${ROSETTA_ENV}.json" > env.json.tmp && mv env.json.tmp "${ROSETTA_ENV}.json"; \
-    echo "$(ACCOUNT_NAME),$$KEYS,0x$$address" >> $(ACCOUNT_KEYS_FILENAME); \
+	echo "$(ACCOUNT_NAME),$$KEYS,0x$$address" >> $(ACCOUNT_KEYS_FILENAME); \
 	echo "Updated $(FLOW_JSON), $(ROSETTA_ENV).json and $(ACCOUNT_KEYS_FILENAME)";
 
 .PHONY: fund-accounts
@@ -67,22 +67,22 @@ create-originator-derived-account:
 	ROOT_ORIGINATOR_PUBLIC_KEY=$$(grep '$(ORIGINATOR_NAME)' $(ACCOUNT_KEYS_FILENAME) | cut -d ',' -f2); \
 	ROOT_ORIGINATOR_PRIVATE_KEY=$$(grep '$(ORIGINATOR_NAME)' $(ACCOUNT_KEYS_FILENAME) | cut -d ',' -f4 ); \
 	ROOT_ORIGINATOR_ADDRESS=$$(grep '$(ORIGINATOR_NAME)' $(ACCOUNT_KEYS_FILENAME) | cut -d ',' -f5); \
-    echo "Originator address: $$ROOT_ORIGINATOR_ADDRESS"; \
-  	TX_HASH=$$(python3 rosetta_handler.py rosetta-create-derived-account $(ROSETTA_HOST_URL) $$ROOT_ORIGINATOR_ADDRESS $$ROOT_ORIGINATOR_PUBLIC_KEY $$ROOT_ORIGINATOR_PRIVATE_KEY $$NEW_ACCOUNT_PUBLIC_ROSETTA_KEY); \
+	echo "Originator address: $$ROOT_ORIGINATOR_ADDRESS"; \
+	TX_HASH=$$(python3 rosetta_handler.py rosetta-create-derived-account $(ROSETTA_HOST_URL) $$ROOT_ORIGINATOR_ADDRESS $$ROOT_ORIGINATOR_PUBLIC_KEY $$ROOT_ORIGINATOR_PRIVATE_KEY $$NEW_ACCOUNT_PUBLIC_ROSETTA_KEY); \
 	ADDRESS=$$(flow transactions get $$TX_HASH -f $(FLOW_JSON) -n $(ROSETTA_ENV) -o json | jq -r '.events[] | select(.type == "flow.AccountCreated") | .values.value.fields[] | select(.name == "address") | .value.value'); \
 	echo "TX_HASH: $$TX_HASH , ADDRESS: $$ADDRESS"; \
-  	echo "$(NEW_ACCOUNT_NAME),$$NEW_ACCOUNT_PUBLIC_FLOW_KEY,$$NEW_ACCOUNT_PUBLIC_ROSETTA_KEY,$$NEW_ACCOUNT_PRIVATE_KEY,$$ADDRESS" >> $(ACCOUNT_KEYS_FILENAME);
+	echo "$(NEW_ACCOUNT_NAME),$$NEW_ACCOUNT_PUBLIC_FLOW_KEY,$$NEW_ACCOUNT_PUBLIC_ROSETTA_KEY,$$NEW_ACCOUNT_PRIVATE_KEY,$$ADDRESS" >> $(ACCOUNT_KEYS_FILENAME);
 
 .PHONY: rosetta-transfer-funds
 rosetta-transfer-funds:
 	PAYER_PUBLIC_KEY=$$(grep '$(PAYER_NAME)' $(ACCOUNT_KEYS_FILENAME) | cut -d ',' -f2); \
 	PAYER_PRIVATE_KEY=$$(grep '$(PAYER_NAME)' $(ACCOUNT_KEYS_FILENAME) | cut -d ',' -f4 ); \
 	PAYER_ADDRESS=$$(grep '$(PAYER_NAME)' $(ACCOUNT_KEYS_FILENAME) | cut -d ',' -f5); \
-    echo "Payer address: $$PAYER_ADDRESS"; \
+	echo "Payer address: $$PAYER_ADDRESS"; \
 	RECIPIENT_ADDRESS=$$(grep '$(RECIPIENT_NAME)' $(ACCOUNT_KEYS_FILENAME) | cut -d ',' -f5); \
-    echo "Recipient address: $$RECIPIENT_ADDRESS"; \
-  	TX_HASH=$$(python3 rosetta_handler.py rosetta-transfer-funds $(ROSETTA_HOST_URL) $$PAYER_ADDRESS $$PAYER_PUBLIC_KEY $$PAYER_PRIVATE_KEY $$RECIPIENT_ADDRESS $$AMOUNT); \
-    echo "Funding sent: $$TX_HASH";
+	echo "Recipient address: $$RECIPIENT_ADDRESS"; \
+	TX_HASH=$$(python3 rosetta_handler.py rosetta-transfer-funds $(ROSETTA_HOST_URL) $$PAYER_ADDRESS $$PAYER_PUBLIC_KEY $$PAYER_PRIVATE_KEY $$RECIPIENT_ADDRESS $$AMOUNT); \
+	echo "Funding sent: $$TX_HASH";
 
 # Use this target to verify that the accounts configured in the Rosetta environment JSON have the specified contracts deployed
 .PHONY: verify-configured-contract-addresses
@@ -92,22 +92,22 @@ verify-configured-contract-addresses:
 		KEY=$$(echo $$contract | cut -d= -f1); \
 		VALUE=$$(echo $$contract | cut -d= -f2); \
 		if [ "$$VALUE" = "0000000000000000" ]; then \
-        			continue; \
-        fi; \
+					continue; \
+		fi; \
 		CONTRACTS_FOUND=$$(flow accounts get $$VALUE -f $(FLOW_JSON) -n $(ROSETTA_ENV) -o json | \
 			jq -r '.contracts | join(",") '); \
 		found=false ; \
 		for contract in $$(echo $$CONTRACTS_FOUND | tr ',' ' '); do \
-		  		lowercase_contract_name=$$(echo $$contract | tr '[:upper:]' '[:lower:]'); \
-		  		if [ "$$KEY" = "$$lowercase_contract_name" ]; then \
-        		  	found=true ; \
-        			break; \
-        		fi; \
-        	done; \
-        if [ "$$found" = "false" ]; then \
-          	echo "Contract $$KEY configured in $(ROSETTA_ENV).json is not deployed to configured address $$VALUE" ;\
+				lowercase_contract_name=$$(echo $$contract | tr '[:upper:]' '[:lower:]'); \
+				if [ "$$KEY" = "$$lowercase_contract_name" ]; then \
+					found=true ; \
+					break; \
+				fi; \
+			done; \
+		if [ "$$found" = "false" ]; then \
+			echo "Contract $$KEY configured in $(ROSETTA_ENV).json is not deployed to configured address $$VALUE" ;\
 		fi; \
-	done ; \
+	done ;
 
 .PHONY: build
 build: go-test go-build
