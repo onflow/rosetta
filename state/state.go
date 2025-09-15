@@ -29,9 +29,10 @@ import (
 	"github.com/onflow/rosetta/cache"
 	"github.com/onflow/rosetta/config"
 	"github.com/onflow/rosetta/indexdb"
+	"github.com/onflow/rosetta/log"
 	"github.com/onflow/rosetta/model"
 	"github.com/onflow/rosetta/process"
-	"github.com/rs/zerolog/log"
+	zerolog "github.com/rs/zerolog/log"
 	"golang.org/x/crypto/openpgp"
 	"golang.org/x/crypto/openpgp/armor"
 	"google.golang.org/grpc/codes"
@@ -98,18 +99,18 @@ func (i *Indexer) downloadRootState(ctx context.Context, spork *config.Spork, sp
 	bootstrapDir := filepath.Join(sporkDir, "public-root-information")
 	err := os.MkdirAll(bootstrapDir, 0o744)
 	if err != nil {
-		log.Fatal().Msgf("Failed to create the spork bootstrap directory: %s", err)
+		log.Fatalf("Failed to create the spork bootstrap directory: %s", err)
 	}
 	data := download(ctx, spork.Consensus.RootProtocolStateURL)
 	dst := filepath.Join(bootstrapDir, "root-protocol-state-snapshot.json")
 	err = os.WriteFile(dst, data, 0o600)
 	if err != nil {
-		log.Fatal().Msgf("Failed to write to %s: %s", dst, err)
+		log.Fatalf("Failed to write to %s: %s", dst, err)
 	}
 	i.root = &stateSnapshot{}
 	err = json.Unmarshal(data, i.root)
 	if err != nil {
-		log.Fatal().Msgf("Failed to decode root protocol state snapshot: %s", err)
+		log.Fatalf("Failed to decode root protocol state snapshot: %s", err)
 	}
 	if spork.Consensus.DisableSignatureCheck {
 		return
@@ -117,24 +118,24 @@ func (i *Indexer) downloadRootState(ctx context.Context, spork *config.Spork, sp
 	signer := bytes.NewReader([]byte(spork.Consensus.SigningKey))
 	keyring, err := openpgp.ReadArmoredKeyRing(signer)
 	if err != nil {
-		log.Fatal().Msgf("Failed to read PGP keyring from the configured signing_key: %s", err)
+		log.Fatalf("Failed to read PGP keyring from the configured signing_key: %s", err)
 	}
 	sig := download(ctx, spork.Consensus.RootProtocolStateSignatureURL)
 	block, err := armor.Decode(bytes.NewReader(sig))
 	if err != nil {
-		log.Fatal().Msgf(
+		log.Fatalf(
 			"Failed to decode PGP signature block from %s: %s",
 			spork.Consensus.RootProtocolStateSignatureURL, err,
 		)
 	}
 	if block.Type != openpgp.SignatureType {
-		log.Fatal().Msgf("Failed to get PGP signature block: got %q instead", block.Type)
+		log.Fatalf("Failed to get PGP signature block: got %q instead", block.Type)
 	}
 	_, err = openpgp.CheckDetachedSignature(
 		keyring, bytes.NewReader(data), block.Body,
 	)
 	if err != nil {
-		log.Fatal().Msgf("Failed to get valid PGP signature for the root protocol state: %s", err)
+		log.Fatalf("Failed to get valid PGP signature for the root protocol state: %s", err)
 	}
 }
 
@@ -154,7 +155,7 @@ func (i *Indexer) findRootBlock(ctx context.Context, spork *config.Spork) *model
 		client := spork.AccessNodes.Client()
 		block, err := client.BlockByHeight(ctx, spork.RootBlock)
 		if err != nil {
-			log.Error().Msgf(
+			log.Errorf(
 				"Failed to fetch the %s root block: %s",
 				spork, err,
 			)
@@ -162,7 +163,7 @@ func (i *Indexer) findRootBlock(ctx context.Context, spork *config.Spork) *model
 			continue
 		}
 		if block.Height != spork.RootBlock {
-			log.Error().Msgf(
+			log.Errorf(
 				"Unexpected block height (%d) when fetching the root block of %s at height %d",
 				block.Height, spork, spork.RootBlock,
 			)
@@ -198,7 +199,7 @@ func (i *Indexer) getVerifiedParent(rctx context.Context, hash []byte, height ui
 		if skipCache {
 			ctx = cache.Skip(rctx)
 			if !skipCacheWarned {
-				log.Warn().Msgf(
+				log.Warnf(
 					"Skipping cache for getting verified parent for block %x at height %d",
 					hash, height,
 				)
@@ -210,14 +211,14 @@ func (i *Indexer) getVerifiedParent(rctx context.Context, hash []byte, height ui
 		client := spork.AccessNodes.Client()
 		hdr, err := client.BlockHeaderByHeight(ctx, height)
 		if err != nil {
-			log.Error().Msgf(
+			log.Errorf(
 				"Failed to fetch header for block %x at height %d: %s",
 				hash, height, err,
 			)
 			continue
 		}
 		if !bytes.Equal(hdr.Id, hash) {
-			log.Error().Msgf(
+			log.Errorf(
 				"Got unexpected header value for block at height %d: expected %x, got %x",
 				height, hash, hdr.Id,
 			)
@@ -226,14 +227,14 @@ func (i *Indexer) getVerifiedParent(rctx context.Context, hash []byte, height ui
 		}
 		block, err := client.BlockByHeight(ctx, height)
 		if err != nil {
-			log.Error().Msgf(
+			log.Errorf(
 				"Failed to fetch block %x at height %d: %s",
 				hash, height, err,
 			)
 			continue
 		}
 		if !bytes.Equal(block.Id, hash) {
-			log.Error().Msgf(
+			log.Errorf(
 				"Got unexpected block value at height %d: expected %x, got %x",
 				height, hash, block.Id,
 			)
@@ -264,17 +265,17 @@ func (i *Indexer) handleResyncFrom() {
 	}
 	genesis := i.Store.Genesis().Height
 	if height < genesis {
-		log.Fatal().Msgf(
+		log.Fatalf(
 			"The resync_from value (%d) cannot be less than the height of the genesis block (%d)",
 			height, genesis,
 		)
 	}
 	err := i.Store.ResetTo(height)
 	if err != nil {
-		log.Fatal().Msgf("Failed to reset data for resync_from: %s", err)
+		log.Fatalf("Failed to reset data for resync_from: %s", err)
 	}
 	i.lastIndexed = i.Store.Latest()
-	log.Info().Msgf(
+	log.Infof(
 		"Successfully reset indexed data to block %x at height %d",
 		i.lastIndexed.Hash, i.lastIndexed.Height,
 	)
@@ -339,7 +340,7 @@ func (i *Indexer) indexLiveSpork(rctx context.Context, spork *config.Spork, last
 			if skipCache {
 				ctx = cache.Skip(rctx)
 				if !skipCacheWarned {
-					log.Warn().Msgf(
+					log.Warnf(
 						"Skipping cache for retrieving block at height %d",
 						height,
 					)
@@ -359,13 +360,13 @@ func (i *Indexer) indexLiveSpork(rctx context.Context, spork *config.Spork, last
 					if synced {
 						time.Sleep(time.Second)
 					} else {
-						log.Error().Msgf(
+						log.Errorf(
 							"Failed to fetch header for block at height %d: %s",
 							height, err,
 						)
 					}
 				default:
-					log.Error().Msgf(
+					log.Errorf(
 						"Failed to fetch header for block at height %d: %s",
 						height, err,
 					)
@@ -374,11 +375,11 @@ func (i *Indexer) indexLiveSpork(rctx context.Context, spork *config.Spork, last
 			}
 			block, err := client.BlockByHeight(ctx, height)
 			if err != nil {
-				log.Error().Msgf("Failed to fetch block at height %d: %s", height, err)
+				log.Errorf("Failed to fetch block at height %d: %s", height, err)
 				continue
 			}
 			if !bytes.Equal(block.ParentId, parent) {
-				log.Error().Msgf(
+				log.Errorf(
 					"Unexpected parent hash found for block %x at height %d: expected %x, got %x",
 					block.Id, height, parent, block.ParentId,
 				)
@@ -393,7 +394,7 @@ func (i *Indexer) indexLiveSpork(rctx context.Context, spork *config.Spork, last
 				blockID := flow.Identifier{}
 				err := operation.LookupBlockHeight(i.consensus.Reader(), height, &blockID)
 				if err != nil {
-					log.Error().Msgf(
+					log.Errorf(
 						"Failed to get block ID for height %d from consensus: %s",
 						height, err,
 					)
@@ -403,7 +404,7 @@ func (i *Indexer) indexLiveSpork(rctx context.Context, spork *config.Spork, last
 					continue
 				}
 				if !bytes.Equal(blockID[:], block.Id) {
-					log.Error().Msgf(
+					log.Errorf(
 						"Mismatching block ID found for height %d: %x from Access API, %x from consensus",
 						height, block.Id, blockID[:],
 					)
@@ -411,14 +412,14 @@ func (i *Indexer) indexLiveSpork(rctx context.Context, spork *config.Spork, last
 					continue
 				}
 			}
-			log.Info().Msgf("Retrieved block %x at height %d", block.Id, block.Height)
+			log.Infof("Retrieved block %x at height %d", block.Id, block.Height)
 			blocks[string(block.Id)] = height
 			// NOTE(tav): We assume that block seals will only ever be seen in
 			// block height order.
 			for _, seal := range block.BlockSeals {
 				blockHeight, ok := blocks[string(seal.BlockId)]
 				if !ok {
-					log.Warn().Msgf(
+					log.Warnf(
 						"Skipping seal for block %x in block %x at height %d",
 						seal.BlockId, block.Id, height,
 					)
@@ -430,7 +431,7 @@ func (i *Indexer) indexLiveSpork(rctx context.Context, spork *config.Spork, last
 					sealID := flow.Identifier{}
 					err := operation.LookupBySealedBlockID(i.consensus.Reader(), blockID, &sealID)
 					if err != nil {
-						log.Error().Msgf(
+						log.Errorf(
 							"Failed to get seal ID for block %x from consensus: %s",
 							seal.BlockId, err,
 						)
@@ -439,21 +440,21 @@ func (i *Indexer) indexLiveSpork(rctx context.Context, spork *config.Spork, last
 					blockSeal := &flow.Seal{}
 					err = operation.RetrieveSeal(i.consensus.Reader(), sealID, blockSeal)
 					if err != nil {
-						log.Error().Msgf(
+						log.Errorf(
 							"Failed to get seal %x for block %x from consensus: %s",
 							sealID[:], seal.BlockId, err,
 						)
 						continue inner
 					}
 					if !bytes.Equal(seal.BlockId, blockSeal.BlockID[:]) {
-						log.Error().Msgf(
+						log.Errorf(
 							"Unverifiable seal found in block %x at height %d: got seal for block %x via Acccess API, found seal for block %x via consensus",
 							block.Id, height, seal.BlockId, blockSeal.BlockID[:],
 						)
 						continue inner
 					}
 					if !bytes.Equal(seal.ResultId, blockSeal.ResultID[:]) {
-						log.Error().Msgf(
+						log.Errorf(
 							"Unverifiable execution result for block %x found in block %x at height %d: got %x via Acccess API, got %x via consensus",
 							seal.BlockId, block.Id, height, seal.ResultId, blockSeal.ResultID[:],
 						)
@@ -468,14 +469,14 @@ func (i *Indexer) indexLiveSpork(rctx context.Context, spork *config.Spork, last
 			parent = block.Id
 			if time.Since(block.Timestamp.AsTime()) < syncWindow {
 				if !synced {
-					log.Info().Msgf("Indexer is close to tip")
+					log.Infof("Indexer is close to tip")
 					synced = true
 					i.mu.Lock()
 					i.synced = true
 					i.mu.Unlock()
 				}
 			} else if synced {
-				log.Error().Msgf("Indexer is not close to tip")
+				log.Errorf("Indexer is not close to tip")
 				synced = false
 				i.mu.Lock()
 				i.synced = false
@@ -501,7 +502,7 @@ func (i *Indexer) indexPastSporks(ctx context.Context, lastIndexed *model.BlockM
 			return
 		}
 		hashes = append(hashes, hash)
-		log.Info().Msgf("Retrieved block %x at height %d", hash, height)
+		log.Infof("Retrieved block %x at height %d", hash, height)
 	}
 	if !bytes.Equal(lastIndexed.Hash, parent) {
 		// NOTE(tav): If we've arrived at this state, it's effectively a fatal
@@ -512,7 +513,7 @@ func (i *Indexer) indexPastSporks(ctx context.Context, lastIndexed *model.BlockM
 		// This will most likely only happen if we got corrupted block data when
 		// we looked up the "genesis" block, i.e. the "root" block of the first
 		// spork amongst the configured sporks.
-		log.Error().Msgf(
+		log.Errorf(
 			"Unable to establish a hash chain from live spork root block to last indexed block %x at height %d: found %x as parent instead",
 			lastIndexed.Hash, lastIndexed.Height, parent,
 		)
@@ -534,7 +535,7 @@ func (i *Indexer) indexPastSporks(ctx context.Context, lastIndexed *model.BlockM
 func (i *Indexer) initState() {
 	accts, err := i.Store.Accounts()
 	if err != nil {
-		log.Fatal().Msgf("Failed to load accounts from the index database: %s", err)
+		log.Fatalf("Failed to load accounts from the index database: %s", err)
 	}
 	i.accts = map[string]bool{}
 	for acct, isProxy := range accts {
@@ -542,7 +543,7 @@ func (i *Indexer) initState() {
 	}
 	i.feeAddr, err = hex.DecodeString(i.Chain.Contracts.FlowFees)
 	if err != nil {
-		log.Fatal().Msgf(
+		log.Fatalf(
 			"Invalid FlowFees contract address %q: %s",
 			i.Chain.Contracts.FlowFees, err,
 		)
@@ -571,9 +572,9 @@ func (i *Indexer) initStore(ctx context.Context) bool {
 		return false
 	}
 	if err := i.Store.SetGenesis(genesis); err != nil {
-		log.Fatal().Msgf("Couldn't set the genesis block on the index database: %s", err)
+		log.Fatalf("Couldn't set the genesis block on the index database: %s", err)
 	}
-	log.Info().Msgf("Genesis block set to block %x at height %d", genesis.Hash, genesis.Height)
+	log.Infof("Genesis block set to block %x at height %d", genesis.Hash, genesis.Height)
 	i.lastIndexed = genesis
 	i.liveRoot = i.findRootBlock(ctx, i.Chain.LatestSpork())
 	return i.liveRoot != nil
@@ -625,7 +626,7 @@ func (i *Indexer) nextBackoff(d time.Duration) time.Duration {
 }
 
 func (i *Indexer) onBlockFinalized(f *hotstuff.Block) {
-	log.Info().Msgf(
+	log.Infof(
 		"Got finalized block via consensus follower: %x (block timestamp: %s)",
 		f.BlockID[:], time.UnixMilli(int64(f.Timestamp)).Format(time.RFC3339),
 	)
@@ -637,10 +638,10 @@ func (i *Indexer) runConsensusFollower(ctx context.Context) {
 	i.downloadRootState(ctx, spork, sporkDir)
 	dbDir := filepath.Join(sporkDir, "consensus")
 
-	dbLog := log.With().Str("pebbledb", "consensusFollower").Logger()
+	dbLog := zerolog.With().Str("pebbledb", "consensusFollower").Logger()
 	db, err := pebble.SafeOpen(dbLog, dbDir)
 	if err != nil {
-		log.Fatal().Msgf("Failed to open consensus database at %s: %s", dbDir, err)
+		log.Fatalf("Failed to open consensus database at %s: %s", dbDir, err)
 	}
 	protocolDB := pebbleimpl.ToDB(db)
 	// Initialize a private key for joining the unstaked peer-to-peer network.
@@ -648,21 +649,21 @@ func (i *Indexer) runConsensusFollower(ctx context.Context) {
 	seed := make([]byte, flowcrypto.KeyGenSeedMinLen)
 	n, err := rand.Read(seed)
 	if err != nil || n != flowcrypto.KeyGenSeedMinLen {
-		log.Fatal().Msgf("Could not generate seed for the consensus follower private key")
+		log.Fatalf("Could not generate seed for the consensus follower private key")
 	}
 	key, err := utils.GeneratePublicNetworkingKey(seed)
 	if err != nil {
-		log.Fatal().Msgf("Could not generate the consensus follower private key")
+		log.Fatalf("Could not generate the consensus follower private key")
 	}
 	nodes := []follower.BootstrapNodeInfo{}
 	for _, node := range spork.Consensus.SeedNodes {
 		rawkey, err := hex.DecodeString(node.PublicKey)
 		if err != nil {
-			log.Fatal().Msgf("Failed to hex decode the seed node key %q: %s", key, err)
+			log.Fatalf("Failed to hex decode the seed node key %q: %s", key, err)
 		}
 		pubkey, err := flowcrypto.DecodePublicKey(flowcrypto.ECDSAP256, rawkey)
 		if err != nil {
-			log.Fatal().Msgf("Failed to decode the seed node key %q: %s", key, err)
+			log.Fatalf("Failed to decode the seed node key %q: %s", key, err)
 		}
 		nodes = append(nodes, follower.BootstrapNodeInfo{
 			Host:             node.Host,
@@ -689,7 +690,7 @@ func (i *Indexer) runConsensusFollower(ctx context.Context) {
 		}),
 	)
 	if err != nil {
-		log.Fatal().Msgf("Failed to create the consensus follower: %s", err)
+		log.Fatalf("Failed to create the consensus follower: %s", err)
 	}
 	i.consensus = protocolDB
 	ctx, cancel := context.WithCancel(ctx)
@@ -709,7 +710,7 @@ func (i *Indexer) scheduleJobs(ctx context.Context, startHeight uint64) {
 		client := pool.Client()
 		block, err := client.LatestFinalizedBlockHeader(ctx)
 		if err != nil {
-			log.Error().Msgf("Failed to fetch latest sealed block: %s", err)
+			log.Errorf("Failed to fetch latest sealed block: %s", err)
 			time.Sleep(time.Second)
 			continue
 		}
@@ -723,7 +724,7 @@ func (i *Indexer) scheduleJobs(ctx context.Context, startHeight uint64) {
 		for height := startHeight + 1; height <= block.Height; height++ {
 			i.jobs <- height
 			if height%200 == 0 {
-				log.Warn().Msgf("Added job to prefetch block %d", height)
+				log.Warnf("Added job to prefetch block %d", height)
 			}
 		}
 		startHeight = block.Height
@@ -734,18 +735,18 @@ func download(ctx context.Context, src string) []byte {
 	for {
 		req, err := http.NewRequestWithContext(ctx, "GET", src, nil)
 		if err != nil {
-			log.Fatal().Msgf("Failed to create HTTP request to %s: %s", src, err)
+			log.Fatalf("Failed to create HTTP request to %s: %s", src, err)
 		}
 		resp, err := httpClient.Do(req)
 		if err != nil {
-			log.Error().Msgf("Failed to download %s: %s", src, err)
+			log.Errorf("Failed to download %s: %s", src, err)
 			time.Sleep(time.Second)
 			continue
 		}
 		data, err := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
 		if err != nil {
-			log.Error().Msgf("Failed to read data from %s: %s", src, err)
+			log.Errorf("Failed to read data from %s: %s", src, err)
 			time.Sleep(time.Second)
 			continue
 		}
