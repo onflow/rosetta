@@ -13,14 +13,11 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/onflow/flow-go/storage"
-	"github.com/onflow/flow-go/storage/operation"
-	"github.com/onflow/flow-go/storage/operation/pebbleimpl"
-	"github.com/onflow/flow-go/storage/pebble"
+	"github.com/dgraph-io/badger/v3"
+	"github.com/onflow/rosetta/log"
 	"github.com/onflow/rosetta/model"
 	"github.com/onflow/rosetta/process"
 	"github.com/onflow/rosetta/trace"
-	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -64,7 +61,7 @@ type BlockData struct {
 
 // Store aggregates the blockchain data for Rosetta API calls.
 type Store struct {
-	db      storage.DB
+	db      *badger.DB
 	genesis *model.BlockMeta
 	latest  *model.BlockMeta
 	mu      sync.RWMutex // protects genesis and latest
@@ -80,33 +77,45 @@ func (s *Store) Accounts() (map[[8]byte]bool, error) {
 	// If this ever becomes a bottleneck, we could add a method that returns
 	// batches of accounts instead.
 	accts := map[[8]byte]bool{}
-	accountPrefix := []byte("a")
-	err := operation.IterateKeys(s.db.Reader(), accountPrefix, accountPrefix,
-		operation.KeyOnlyIterateFunc(func(keyCopy []byte) error {
+	err := s.db.View(func(txn *badger.Txn) error {
+		it := txn.NewIterator(badger.IteratorOptions{})
+		defer it.Close()
+		prefix := []byte("a")
+		it.Seek(prefix)
+		for {
+			if !it.ValidForPrefix(prefix) {
+				break
+			}
+			key := it.Item().Key()
 			acct := [8]byte{}
-			copy(acct[:], keyCopy[1:9])
-			accts[acct] = false // not a proxy account
-			return nil
-		}), storage.IteratorOption{})
-	if err != nil {
-		return nil, fmt.Errorf("indexdb: failed to get all accounts: %w", err)
-	}
-	proxyAccountPrefix := []byte("p")
-	err = operation.IterateKeys(s.db.Reader(), proxyAccountPrefix, proxyAccountPrefix,
-		operation.KeyOnlyIterateFunc(func(keyCopy []byte) error {
+			copy(acct[:], key[1:9])
+			accts[acct] = false
+			it.Next()
+		}
+		it = txn.NewIterator(badger.IteratorOptions{})
+		defer it.Close()
+		prefix = []byte("p")
+		it.Seek(prefix)
+		for {
+			if !it.ValidForPrefix(prefix) {
+				break
+			}
+			key := it.Item().Key()
 			acct := [8]byte{}
-			copy(acct[:], keyCopy[1:9])
+			copy(acct[:], key[1:9])
 			if _, ok := accts[acct]; !ok {
 				return fmt.Errorf(
 					"indexdb: found proxy account %x that doesn't have an account balance",
 					acct,
 				)
 			}
-			accts[acct] = true // is a proxy account
-			return nil
-		}), storage.IteratorOption{})
+			accts[acct] = true
+			it.Next()
+		}
+		return nil
+	})
 	if err != nil {
-		return nil, fmt.Errorf("indexdb: failed to get all accounts: %w", err)
+		return nil, fmt.Errorf("indexdb: failed to get all accounts: %s", err)
 	}
 	return accts, nil
 }
@@ -115,35 +124,53 @@ func (s *Store) Accounts() (map[[8]byte]bool, error) {
 // corresponding account info.
 func (s *Store) AccountsInfo() (map[string]*AccountInfo, error) {
 	data := map[string]*AccountInfo{}
-	accountPrefix := []byte("a")
-	err := operation.IterateKeys(s.db.Reader(), accountPrefix, accountPrefix,
-		func(keyCopy []byte, getValue func(destVal any) error) (bail bool, err error) {
-			acct := hex.EncodeToString(keyCopy[1:9])
+	err := s.db.View(func(txn *badger.Txn) error {
+		it := txn.NewIterator(badger.IteratorOptions{})
+		defer it.Close()
+		prefix := []byte("a")
+		it.Seek(prefix)
+		for {
+			if !it.ValidForPrefix(prefix) {
+				break
+			}
+			item := it.Item()
+			key := item.Key()
+			acct := hex.EncodeToString(key[1:9])
 			info, ok := data[acct]
 			if !ok {
 				info = &AccountInfo{}
 				data[acct] = info
 			}
-			var balanceData []byte
-			err = getValue(&balanceData)
+			balance := uint64(0)
+			err := item.Value(func(val []byte) error {
+				balance = binary.BigEndian.Uint64(val)
+				return nil
+			})
 			if err != nil {
-				return true, err
+				return err
 			}
-			balance := binary.BigEndian.Uint64(balanceData)
 			info.Changes = append(info.Changes, [2]uint64{
-				binary.BigEndian.Uint64(keyCopy[9:]),
+				binary.BigEndian.Uint64(key[9:]),
 				balance,
 			})
-			return false, nil
-		}, storage.IteratorOption{})
+			it.Next()
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, fmt.Errorf("indexdb: failed to process indexed accounts: %s", err)
 	}
-
-	proxyAccountPrefix := []byte("p")
-	err = operation.IterateKeys(s.db.Reader(), proxyAccountPrefix, proxyAccountPrefix,
-		operation.KeyOnlyIterateFunc(func(keyCopy []byte) error {
-			acct := hex.EncodeToString(keyCopy[1:9])
+	err = s.db.View(func(txn *badger.Txn) error {
+		it := txn.NewIterator(badger.IteratorOptions{})
+		defer it.Close()
+		prefix := []byte("p")
+		it.Seek(prefix)
+		for {
+			if !it.ValidForPrefix(prefix) {
+				break
+			}
+			key := it.Item().Key()
+			acct := hex.EncodeToString(key[1:9])
 			info, ok := data[acct]
 			if !ok {
 				return fmt.Errorf(
@@ -152,8 +179,10 @@ func (s *Store) AccountsInfo() (map[string]*AccountInfo, error) {
 				)
 			}
 			info.Proxy = true
-			return nil
-		}), storage.IteratorOption{})
+			it.Next()
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, fmt.Errorf("indexdb: failed to process proxy accounts: %s", err)
 	}
@@ -233,15 +262,15 @@ func (s *Store) BlockByHeight(height uint64) (*BlockData, error) {
 func (s *Store) ExportAccounts(filename string) {
 	data, err := s.AccountsInfo()
 	if err != nil {
-		log.Fatal().Msgf("Failed to export accounts: %s", err)
+		log.Fatalf("Failed to export accounts: %s", err)
 	}
 	enc, err := json.Marshal(data)
 	if err != nil {
-		log.Fatal().Msgf("Failed to encode data for export: %s", err)
+		log.Fatalf("Failed to encode data for export: %s", err)
 	}
 	err = os.WriteFile(filename, enc, 0o600)
 	if err != nil {
-		log.Fatal().Msgf("Failed to write to %s: %s", filename, err)
+		log.Fatalf("Failed to write to %s: %s", filename, err)
 	}
 }
 
@@ -254,17 +283,20 @@ func (s *Store) Genesis() *model.BlockMeta {
 		return genesis.Clone()
 	}
 	genesis = &model.BlockMeta{}
-	value, closer, err := s.db.Reader().Get([]byte("genesis"))
+	err := s.db.View(func(txn *badger.Txn) error {
+		item, err := txn.Get([]byte("genesis"))
+		if err != nil {
+			return err
+		}
+		return item.Value(func(val []byte) error {
+			return proto.Unmarshal(val, genesis)
+		})
+	})
 	if err != nil {
-		if err != storage.ErrNotFound {
-			log.Fatal().Msgf("Failed to get genesis block from the index database: %s", err)
+		if err != badger.ErrKeyNotFound {
+			log.Fatalf("Failed to get genesis block from the index database: %s", err)
 		}
 		return nil
-	}
-	defer closer.Close()
-	err = proto.Unmarshal(value, genesis)
-	if err != nil {
-		log.Fatal().Msgf("Failed to unmarshal genesis block from the index database: %s", err)
 	}
 	s.mu.Lock()
 	s.genesis = genesis
@@ -279,16 +311,25 @@ func (s *Store) HasBalance(acct []byte, height uint64) (bool, error) {
 	key[0] = 'a'
 	copy(key[1:9], acct)
 	binary.BigEndian.PutUint64(key[9:], height)
-	r := s.db.Reader()
-	seeker := r.NewSeeker()
-	_, err := seeker.SeekLE(key[:9], key)
+	ok := false
+	err := s.db.View(func(txn *badger.Txn) error {
+		it := txn.NewIterator(badger.IteratorOptions{
+			Reverse: true,
+		})
+		defer it.Close()
+		it.Seek(key)
+		if it.ValidForPrefix(key[:9]) {
+			ok = true
+		}
+		return nil
+	})
 	if err != nil {
 		return false, fmt.Errorf(
 			"indexdb: failed to check balance existence for account %x at height %d: %s",
 			acct, height, err,
 		)
 	}
-	return true, nil
+	return ok, nil
 }
 
 // HashForHeight returns the block hash at the given height.
@@ -297,35 +338,51 @@ func (s *Store) HashForHeight(height uint64) ([]byte, error) {
 	heightEnc := make([]byte, 8)
 	binary.BigEndian.PutUint64(heightEnc, height)
 	key := append([]byte("d"), heightEnc...)
-	value, closer, err := s.db.Reader().Get(key)
+	err := s.db.View(func(txn *badger.Txn) error {
+		item, err := txn.Get(key)
+		if err != nil {
+			return err
+		}
+		return item.Value(func(val []byte) error {
+			hash = make([]byte, len(val))
+			copy(hash, val)
+			return nil
+		})
+	})
 	if err != nil {
-		if err == storage.ErrNotFound {
+		if err == badger.ErrKeyNotFound {
 			return nil, ErrBlockNotIndexed
 		}
 		return nil, fmt.Errorf(
 			"indexdb: failed to get hash for height %d: %s", height, err,
 		)
 	}
-	defer closer.Close()
-	hash = make([]byte, len(value))
-	copy(hash, value)
 	return hash, nil
 }
 
 // HeightForHash returns the block height for the given hash.
 func (s *Store) HeightForHash(hash []byte) (uint64, error) {
+	height := uint64(0)
 	key := append([]byte("c"), hash...)
-	value, closer, err := s.db.Reader().Get(key)
+	err := s.db.View(func(txn *badger.Txn) error {
+		item, err := txn.Get(key)
+		if err != nil {
+			return err
+		}
+		return item.Value(func(val []byte) error {
+			height = binary.BigEndian.Uint64(val)
+			return nil
+		})
+	})
 	if err != nil {
-		if err == storage.ErrNotFound {
+		if err == badger.ErrKeyNotFound {
 			return 0, ErrBlockNotIndexed
 		}
 		return 0, fmt.Errorf(
 			"indexdb: failed to get height for hash %x: %s", hash, err,
 		)
 	}
-	defer closer.Close()
-	return binary.BigEndian.Uint64(value), nil
+	return height, nil
 }
 
 // Index indexes the given block data.
@@ -334,11 +391,11 @@ func (s *Store) Index(ctx context.Context, height uint64, hash []byte, block *mo
 	latest := s.latest
 	s.mu.RUnlock()
 	if latest.Height >= height {
-		log.Info().Msgf("Skipping re-indexing of previously indexed block at height %d", height)
+		log.Infof("Skipping re-indexing of previously indexed block at height %d", height)
 		return nil
 	}
 	if height != latest.Height+1 {
-		log.Fatal().Msgf(
+		log.Fatalf(
 			"Invalid index request for height %d (current height is %d)",
 			height, latest.Height,
 		)
@@ -372,7 +429,7 @@ func (s *Store) Index(ctx context.Context, height uint64, hash []byte, block *mo
 					proxyAccts = append(proxyAccts, key)
 				}
 			default:
-				log.Fatal().Msgf(
+				log.Fatalf(
 					"Unknown transaction operation type: %d (%s)",
 					op.Type, op.Type,
 				)
@@ -395,7 +452,7 @@ func (s *Store) Index(ctx context.Context, height uint64, hash []byte, block *mo
 	blockKey := append([]byte("b"), hval...)
 	blockValue, err := proto.Marshal(block)
 	if err != nil {
-		log.Fatal().Msgf("Failed to encode model.IndexedBlock: %s", err)
+		log.Fatalf("Failed to encode model.IndexedBlock: %s", err)
 	}
 	hash2heightKey := append([]byte("c"), hash...)
 	height2hashKey := append([]byte("d"), hval...)
@@ -406,47 +463,67 @@ func (s *Store) Index(ctx context.Context, height uint64, hash []byte, block *mo
 	}
 	latestEnc, err := proto.Marshal(latest)
 	if err != nil {
-		log.Fatal().Msgf("Failed to encode model.BlockMeta: %s", err)
+		log.Fatalf("Failed to encode model.BlockMeta: %s", err)
 	}
-	err = s.db.WithReaderBatchWriter(func(rbw storage.ReaderBatchWriter) error {
+	err = s.db.Update(func(txn *badger.Txn) error {
 		for _, update := range updates {
-			newVal := int64(update.diff)
-			key, err := rbw.GlobalReader().NewSeeker().SeekLE(update.key[:9], update.key)
-			if err == nil {
-				value, closer, err := rbw.GlobalReader().Get(key)
-				if err != nil {
+			it := txn.NewIterator(badger.IteratorOptions{
+				Reverse: true,
+			})
+			defer it.Close()
+			cur := int64(0)
+			it.Seek(update.key)
+			if it.ValidForPrefix(update.key[:9]) {
+				item := it.Item()
+				if bytes.Equal(item.Key(), update.key) {
+					it.Next()
+					if it.ValidForPrefix(update.key[:9]) {
+						err := item.Value(func(val []byte) error {
+							cur = int64(binary.BigEndian.Uint64(val))
+							return nil
+						})
+						if err != nil {
+							return err
+						}
+					}
+				} else {
+					err := item.Value(func(val []byte) error {
+						cur = int64(binary.BigEndian.Uint64(val))
+						return nil
+					})
+					if err != nil {
+						return err
+					}
 				}
-				existing := int64(binary.BigEndian.Uint64(value))
-				closer.Close()
-				newVal += existing
 			}
-			if newVal < 0 {
+			val := cur + update.diff
+			if val < 0 {
 				return fmt.Errorf(
 					"indexdb: invalid balance found for account %x: %d",
-					update.key[1:9], newVal,
+					update.key[1:9], val,
 				)
 			}
 			balance := make([]byte, 8)
-			binary.BigEndian.PutUint64(balance, uint64(newVal))
-			if err := rbw.Writer().Set(update.key, balance); err != nil {
+			binary.BigEndian.PutUint64(balance, uint64(val))
+			if err := txn.Set(update.key, balance); err != nil {
 				return err
 			}
 		}
 		for _, acct := range proxyAccts {
-			if err := rbw.Writer().Set(acct, []byte("1")); err != nil {
+			if err := txn.Set(acct, []byte("1")); err != nil {
 				return err
 			}
 		}
-		if err := rbw.Writer().Set(blockKey, blockValue); err != nil {
+		if err := txn.Set(blockKey, blockValue); err != nil {
 			return err
 		}
-		if err := rbw.Writer().Set(hash2heightKey, hval); err != nil {
+		if err := txn.Set(hash2heightKey, hval); err != nil {
 			return err
 		}
-		if err := rbw.Writer().Set(height2hashKey, hash); err != nil {
+		if err := txn.Set(height2hashKey, hash); err != nil {
 			return err
 		}
-		if err := rbw.Writer().Set([]byte("latest"), latestEnc); err != nil {
+		if err := txn.Set([]byte("latest"), latestEnc); err != nil {
 			return err
 		}
 		return nil
@@ -471,18 +548,20 @@ func (s *Store) Latest() *model.BlockMeta {
 		return latest.Clone()
 	}
 	latest = &model.BlockMeta{}
-
-	value, closer, err := s.db.Reader().Get([]byte("latest"))
+	err := s.db.View(func(txn *badger.Txn) error {
+		item, err := txn.Get([]byte("latest"))
+		if err != nil {
+			return err
+		}
+		return item.Value(func(val []byte) error {
+			return proto.Unmarshal(val, latest)
+		})
+	})
 	if err != nil {
-		if err != storage.ErrNotFound {
-			log.Fatal().Msgf("Failed to get latest block from the index database: %s", err)
+		if err != badger.ErrKeyNotFound {
+			log.Fatalf("Failed to get latest block from the index database: %s", err)
 		}
 		return nil
-	}
-	defer closer.Close()
-	err = proto.Unmarshal(value, latest)
-	if err != nil {
-		log.Fatal().Msgf("Failed to unmarshal latest block from the index database: %s", err)
 	}
 	s.mu.Lock()
 	s.latest = latest
@@ -494,41 +573,61 @@ func (s *Store) Latest() *model.BlockMeta {
 // creation heights from the index database.
 func (s *Store) PurgeProxyAccounts() {
 	accts := map[string][]byte{}
-	err := operation.IterateKeys(s.db.Reader(), []byte("p"), []byte("p"), operation.KeyOnlyIterateFunc(
-		func(keyCopy []byte) error {
-			accts[string(keyCopy[1:9])] = keyCopy
-			return nil
-		}), storage.IteratorOption{})
+	err := s.db.View(func(txn *badger.Txn) error {
+		it := txn.NewIterator(badger.IteratorOptions{})
+		defer it.Close()
+		prefix := []byte("p")
+		it.Seek(prefix)
+		for {
+			if !it.ValidForPrefix(prefix) {
+				break
+			}
+			key := it.Item().KeyCopy(nil)
+			accts[string(key[1:9])] = key
+			it.Next()
+		}
+		return nil
+	})
 	if err != nil {
-		log.Fatal().Msgf("Failed to iterate over proxy keys: %s", err)
+		log.Fatalf("Failed to iterate over proxy keys: %s", err)
 	}
 	accountBalanceKeys := [][]byte{}
-	err = operation.IterateKeys(s.db.Reader(), []byte("a"), []byte("a"), operation.KeyOnlyIterateFunc(
-		func(keyCopy []byte) error {
-			_, isProxy := accts[string(keyCopy[1:9])]
-			if isProxy {
-				accountBalanceKeys = append(accountBalanceKeys, keyCopy)
+	err = s.db.View(func(txn *badger.Txn) error {
+		it := txn.NewIterator(badger.IteratorOptions{})
+		defer it.Close()
+		prefix := []byte("a")
+		it.Seek(prefix)
+		for {
+			if !it.ValidForPrefix(prefix) {
+				break
 			}
-			return nil
-		}), storage.IteratorOption{})
+			key := it.Item().KeyCopy(nil)
+			_, isProxy := accts[string(key[1:9])]
+			if isProxy {
+				accountBalanceKeys = append(accountBalanceKeys, key)
+			}
+			it.Next()
+		}
+		return nil
+	})
 	if err != nil {
-		log.Fatal().Msgf("Failed to iterate over account balance keys: %s", err)
+		log.Fatalf("Failed to iterate over account balance keys: %s", err)
 	}
-	err = s.db.WithReaderBatchWriter(func(rbw storage.ReaderBatchWriter) error {
+	err = s.db.Update(func(txn *badger.Txn) error {
 		for _, key := range accts {
-			if err := rbw.Writer().Delete(key); err != nil {
+			if err := txn.Delete(key); err != nil {
 				return err
 			}
 		}
 		for _, key := range accountBalanceKeys {
-			if err := rbw.Writer().Delete(key); err != nil {
+			if err := txn.Delete(key); err != nil {
 				return err
 			}
 		}
 		return nil
 	})
 	if err != nil {
-		log.Fatal().Msgf("Failed to purge proxy accounts data: %s", err)
+		log.Fatalf("Failed to purge proxy accounts data: %s", err)
 	}
 }
 
@@ -539,42 +638,73 @@ func (s *Store) ResetTo(base uint64) error {
 		return nil
 	}
 	delKeys := [][]byte{}
-	err := operation.IterateKeys(s.db.Reader(), []byte("a"), []byte("a"), operation.KeyOnlyIterateFunc(
-		func(keyCopy []byte) error {
-			height := binary.BigEndian.Uint64(keyCopy[9:])
-			if height > base {
-				delKeys = append(delKeys, keyCopy)
+	err := s.db.View(func(txn *badger.Txn) error {
+		it := txn.NewIterator(badger.IteratorOptions{})
+		prefix := []byte("a")
+		it.Seek(prefix)
+		for {
+			if !it.ValidForPrefix(prefix) {
+				break
 			}
-			return nil
-		}), storage.IteratorOption{})
+			item := it.Item()
+			key := item.Key()
+			height := binary.BigEndian.Uint64(key[9:])
+			if height > base {
+				delKeys = append(delKeys, item.KeyCopy(nil))
+			}
+			it.Next()
+		}
+		it.Close()
+		return nil
+	})
 	if err != nil {
 		return fmt.Errorf("indexdb: failed to get account balance keys to delete: %s", err)
 	}
-	err = operation.IterateKeys(s.db.Reader(), []byte("p"), []byte("p"), operation.KeyOnlyIterateFunc(
-		func(keyCopy []byte) error {
-			height := binary.BigEndian.Uint64(keyCopy[9:])
-			if height > base {
-				delKeys = append(delKeys, keyCopy)
+	err = s.db.View(func(txn *badger.Txn) error {
+		it := txn.NewIterator(badger.IteratorOptions{})
+		prefix := []byte("p")
+		it.Seek(prefix)
+		for {
+			if !it.ValidForPrefix(prefix) {
+				break
 			}
-			return nil
-		}), storage.IteratorOption{})
+			item := it.Item()
+			key := item.Key()
+			height := binary.BigEndian.Uint64(key[9:])
+			if height > base {
+				delKeys = append(delKeys, item.KeyCopy(nil))
+			}
+			it.Next()
+		}
+		it.Close()
+		return nil
+	})
 	if err != nil {
 		return fmt.Errorf("indexdb: failed to get proxy account keys to delete: %s", err)
 	}
 	last := uint64(0)
-	err = operation.IterateKeys(s.db.Reader(), []byte("d"), []byte("d"),
-		func(keyCopy []byte, getValue func(destVal any) error) (bail bool, err error) {
-			height := binary.BigEndian.Uint64(keyCopy[1:])
+	err = s.db.View(func(txn *badger.Txn) error {
+		it := txn.NewIterator(badger.IteratorOptions{})
+		prefix := []byte("d")
+		it.Seek(prefix)
+		for {
+			if !it.ValidForPrefix(prefix) {
+				break
+			}
+			item := it.Item()
+			key := item.Key()
+			height := binary.BigEndian.Uint64(key[1:])
 			if height > base {
-				delKeys = append(delKeys, keyCopy)
-				key := make([]byte, 9)
+				key = item.KeyCopy(nil)
+				delKeys = append(delKeys, key)
+				key = make([]byte, 9)
 				key[0] = 'b'
 				binary.BigEndian.PutUint64(key[1:], height)
 				delKeys = append(delKeys, key)
-				var hash []byte
-				err := getValue(&hash)
+				hash, err := item.ValueCopy(nil)
 				if err != nil {
-					return true, err
+					it.Close()
+					return err
 				}
 				key = make([]byte, len(hash)+1)
 				key[0] = 'c'
@@ -583,22 +713,27 @@ func (s *Store) ResetTo(base uint64) error {
 			} else {
 				last = height
 			}
-			return false, nil
-		}, storage.IteratorOption{})
+			it.Next()
+		}
+		it.Close()
+		return nil
+	})
 	if err != nil {
 		return fmt.Errorf("indexdb: failed to get keys to delete: %s", err)
 	}
 	sort.Slice(delKeys, func(i, j int) bool {
 		return bytes.Compare(delKeys[i], delKeys[j]) == -1
 	})
-	err = s.db.WithReaderBatchWriter(func(rbw storage.ReaderBatchWriter) error {
-		for _, key := range delKeys {
-			if err := rbw.Writer().Delete(key); err != nil {
-				return fmt.Errorf("indexdb: failed to delete keys: %s", err)
-			}
+	batch := s.db.NewWriteBatch()
+	batch.SetMaxPendingTxns(1024)
+	for _, key := range delKeys {
+		err := batch.Delete(key)
+		if err != nil {
+			batch.Cancel()
+			return fmt.Errorf("indexdb: failed to delete keys: %s", err)
 		}
-		return nil
-	})
+	}
+	err = batch.Flush()
 	if err != nil {
 		return fmt.Errorf("indexdb: failed to flush the batched deletion: %s", err)
 	}
@@ -617,10 +752,10 @@ func (s *Store) ResetTo(base uint64) error {
 	}
 	latestEnc, err := proto.Marshal(latest)
 	if err != nil {
-		log.Fatal().Msgf("Failed to encode model.BlockMeta: %s", err)
+		log.Fatalf("Failed to encode model.BlockMeta: %s", err)
 	}
-	err = s.db.WithReaderBatchWriter(func(rbw storage.ReaderBatchWriter) error {
-		return rbw.Writer().Set([]byte("latest"), latestEnc)
+	err = s.db.Update(func(txn *badger.Txn) error {
+		return txn.Set([]byte("latest"), latestEnc)
 	})
 	if err != nil {
 		return fmt.Errorf("indexdb: failed to set latest value: %s", err)
@@ -645,24 +780,24 @@ func (s *Store) SetGenesis(val *model.BlockMeta) error {
 		Timestamp: val.Timestamp,
 	})
 	if err != nil {
-		log.Fatal().Msgf("Failed to encode model.IndexedBlock: %s", err)
+		log.Fatalf("Failed to encode model.IndexedBlock: %s", err)
 	}
 	hash2heightKey := append([]byte("c"), val.Hash...)
 	height2hashKey := append([]byte("d"), hval...)
-	err = s.db.WithReaderBatchWriter(func(rbw storage.ReaderBatchWriter) error {
-		if err := rbw.Writer().Set([]byte("genesis"), genesis); err != nil {
+	err = s.db.Update(func(txn *badger.Txn) error {
+		if err := txn.Set([]byte("genesis"), genesis); err != nil {
 			return err
 		}
-		if err := rbw.Writer().Set(blockKey, blockValue); err != nil {
+		if err := txn.Set(blockKey, blockValue); err != nil {
 			return err
 		}
-		if err := rbw.Writer().Set(hash2heightKey, hval); err != nil {
+		if err := txn.Set(hash2heightKey, hval); err != nil {
 			return err
 		}
-		if err := rbw.Writer().Set(height2hashKey, val.Hash); err != nil {
+		if err := txn.Set(height2hashKey, val.Hash); err != nil {
 			return err
 		}
-		return rbw.Writer().Set([]byte("latest"), genesis)
+		return txn.Set([]byte("latest"), genesis)
 	})
 	if err != nil {
 		return fmt.Errorf("indexdb: failed to set genesis value: %s", err)
@@ -680,17 +815,25 @@ func (s *Store) balanceByHeight(acct []byte, height uint64) (uint64, error) {
 	key[0] = 'a'
 	copy(key[1:9], acct)
 	binary.BigEndian.PutUint64(key[9:], height)
-	latestAsOfHeight, err := s.db.Reader().NewSeeker().SeekLE(key[:9], key)
-	if err == nil {
-		value, closer, err := s.db.Reader().Get(latestAsOfHeight)
-		if err != nil {
-			return 0, fmt.Errorf(
-				"indexdb: failed to get balance for account %x at height %d: %s",
-				acct, height, err,
-			)
+	err := s.db.View(func(txn *badger.Txn) error {
+		it := txn.NewIterator(badger.IteratorOptions{
+			Reverse: true,
+		})
+		defer it.Close()
+		it.Seek(key)
+		if !it.ValidForPrefix(key[:9]) {
+			return nil
 		}
-		defer closer.Close()
-		balance = binary.BigEndian.Uint64(value)
+		return it.Item().Value(func(val []byte) error {
+			balance = binary.BigEndian.Uint64(val)
+			return nil
+		})
+	})
+	if err != nil {
+		return 0, fmt.Errorf(
+			"indexdb: failed to get balance for account %x at height %d: %s",
+			acct, height, err,
+		)
 	}
 	return balance, nil
 }
@@ -700,15 +843,18 @@ func (s *Store) blockByHeight(height uint64) (*model.IndexedBlock, error) {
 	key := make([]byte, 9)
 	key[0] = 'b'
 	binary.BigEndian.PutUint64(key[1:], height)
-	value, closer, err := s.db.Reader().Get(key)
-	if err != nil {
-		if err == storage.ErrNotFound {
-			return nil, ErrBlockNotIndexed
+	err := s.db.View(func(txn *badger.Txn) error {
+		item, err := txn.Get(key)
+		if err != nil {
+			return err
 		}
-		return nil, fmt.Errorf("indexdb: failed to get block at height %d: %s", height, err)
+		return item.Value(func(val []byte) error {
+			return proto.Unmarshal(val, block)
+		})
+	})
+	if err == badger.ErrKeyNotFound {
+		return nil, ErrBlockNotIndexed
 	}
-	defer closer.Close()
-	err = proto.Unmarshal(value, block)
 	return block, err
 }
 
@@ -734,18 +880,18 @@ type accountUpdate struct {
 // New opens the database at the given directory and returns the corresponding
 // Store.
 func New(dir string) *Store {
-	dbLog := log.With().Str("pebbledb", "index").Logger()
-	db, err := pebble.SafeOpen(dbLog, dir)
+	opts := badger.DefaultOptions(dir).WithLogger(log.Badger{Prefix: "index"})
+	db, err := badger.Open(opts)
 	if err != nil {
-		log.Fatal().Msgf("Failed to open the index database at %s: %s", dir, err)
+		log.Fatalf("Failed to open the index database at %s: %s", dir, err)
 	}
 	process.SetExitHandler(func() {
-		log.Info().Msgf("Closing the index database")
+		log.Infof("Closing the index database")
 		if err := db.Close(); err != nil {
-			log.Error().Msgf("Got error closing the index database: %s", err)
+			log.Errorf("Got error closing the index database: %s", err)
 		}
 	})
 	return &Store{
-		db: pebbleimpl.ToDB(db),
+		db: db,
 	}
 }

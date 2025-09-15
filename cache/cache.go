@@ -3,17 +3,12 @@ package cache
 
 import (
 	"context"
-	"errors"
-
-	"github.com/onflow/flow-go/storage"
-	"github.com/onflow/flow-go/storage/operation/badgerimpl"
-	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/dgraph-io/badger/v3"
 	"github.com/golang/protobuf/proto"
-	rosettalog "github.com/onflow/rosetta/log"
+	"github.com/onflow/rosetta/log"
 	"github.com/onflow/rosetta/process"
 	"github.com/onflow/rosetta/trace"
 	"google.golang.org/grpc"
@@ -48,13 +43,12 @@ var nonIdempotent = map[string]bool{
 // The key for each entry is made up by hashing together the request method and
 // message using BLAKE3. And the value is the protobuf-encoded response value.
 type Store struct {
-	db     storage.DB
-	badger *badger.DB // the underlying badger DB is retained only for the DropAll method.
+	db *badger.DB
 }
 
 // DropAll drops all data stored in the underlying cache database.
 func (s *Store) DropAll() error {
-	return s.badger.DropAll()
+	return s.db.DropAll()
 }
 
 // InterceptUnary implements the gRPC middleware for caching certain Access API
@@ -86,13 +80,13 @@ func (s *Store) InterceptUnary(ctx context.Context, method string, req, res inte
 	// different binary versions.
 	enc, err := proto.Marshal(req.(proto.Message))
 	if err != nil {
-		log.Error().Msgf("Failed to encode the gRPC request for caching: %s", err)
+		log.Errorf("Failed to encode the gRPC request for caching: %s", err)
 		cacheMiss.Add(ctx, 1, mOpt)
 		return invoker(ctx, method, req, res, cc, opts...)
 	}
 	hash, err := getHash(method, enc)
 	if err != nil {
-		log.Error().Msgf("Failed to hash the gRPC request for caching: %s", err)
+		log.Errorf("Failed to hash the gRPC request for caching: %s", err)
 		cacheMiss.Add(ctx, 1, mOpt)
 		return invoker(ctx, method, req, res, cc, opts...)
 	}
@@ -102,16 +96,22 @@ func (s *Store) InterceptUnary(ctx context.Context, method string, req, res inte
 	default:
 	}
 	_, span := trace.NewSpan(ctx, "flow.access_api.cache.Lookup")
-	item, closer, err := s.db.Reader().Get(hash)
+	err = s.db.View(func(txn *badger.Txn) error {
+		item, err := txn.Get(hash)
+		if err != nil {
+			return err
+		}
+		return item.Value(func(val []byte) error {
+			return proto.Unmarshal(val, res.(proto.Message))
+		})
+	})
 	if err == nil {
-		err = proto.Unmarshal(item, res.(proto.Message))
-		closer.Close()
 		trace.EndSpanOk(span)
 		if debug {
 			if callerID == "" {
-				log.Info().Msgf("+ Using cached Access API response for %s", method)
+				log.Infof("+ Using cached Access API response for %s", method)
 			} else {
-				log.Info().Msgf(
+				log.Infof(
 					"+ Using cached Access API response for %s (%s)",
 					method, callerID,
 				)
@@ -120,8 +120,8 @@ func (s *Store) InterceptUnary(ctx context.Context, method string, req, res inte
 		cacheHit.Add(ctx, 1, mOpt)
 		return nil
 	}
-	if err != storage.ErrNotFound {
-		log.Error().Msgf("Got unexpected error when decoding gRPC response for caching: %s", err)
+	if err != badger.ErrKeyNotFound {
+		log.Errorf("Got unexpected error when decoding gRPC response for caching: %s", err)
 		trace.EndSpanErr(span, err)
 	} else {
 		span.End()
@@ -138,7 +138,7 @@ func (s *Store) InterceptUnary(ctx context.Context, method string, req, res inte
 	trace.EndSpanOk(span)
 	val, err := proto.Marshal(res.(proto.Message))
 	if err != nil {
-		log.Fatal().Msgf("Failed to encode gRPC response for caching: %s", err)
+		log.Fatalf("Failed to encode gRPC response for caching: %s", err)
 	}
 	select {
 	case <-ctx.Done():
@@ -146,11 +146,11 @@ func (s *Store) InterceptUnary(ctx context.Context, method string, req, res inte
 	default:
 	}
 	_, span = trace.NewSpan(ctx, "flow.access_api.cache.Store")
-	err = s.db.WithReaderBatchWriter(func(rbw storage.ReaderBatchWriter) error {
-		return rbw.Writer().Set(hash, val)
+	err = s.db.Update(func(txn *badger.Txn) error {
+		return txn.Set(hash, val)
 	})
 	if err != nil {
-		log.Error().Msgf("Got unexpected error when persisting gRPC response for caching: %s", err)
+		log.Errorf("Got unexpected error when persisting gRPC response for caching: %s", err)
 		trace.EndSpanErr(span, err)
 	} else {
 		trace.EndSpanOk(span)
@@ -170,20 +170,19 @@ func Context(parent context.Context, callerID string) context.Context {
 // New opens the database at the given directory and returns the corresponding
 // Store.
 func New(dir string) *Store {
-	opts := badger.DefaultOptions(dir).WithLogger(rosettalog.Badger{Prefix: "cache"})
+	opts := badger.DefaultOptions(dir).WithLogger(log.Badger{Prefix: "cache"})
 	db, err := badger.Open(opts)
 	if err != nil {
-		log.Fatal().Msgf("Failed to open the cache database at %s: %s", dir, err)
+		log.Fatalf("Failed to open the cache database at %s: %s", dir, err)
 	}
 	process.SetExitHandler(func() {
-		log.Info().Msgf("Closing the cache database")
+		log.Infof("Closing the cache database")
 		if err := db.Close(); err != nil {
-			log.Error().Msgf("Got error closing the cache database: %s", err)
+			log.Errorf("Got error closing the cache database: %s", err)
 		}
 	})
 	return &Store{
-		db:     badgerimpl.ToDB(db),
-		badger: db,
+		db: db,
 	}
 }
 
