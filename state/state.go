@@ -15,7 +15,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dgraph-io/badger/v2"
 	flowcrypto "github.com/onflow/crypto"
 	"github.com/onflow/flow-go/cmd/bootstrap/utils"
 	hotstuff "github.com/onflow/flow-go/consensus/hotstuff/model"
@@ -25,13 +24,15 @@ import (
 	"github.com/onflow/flow-go/module/compliance"
 	"github.com/onflow/flow-go/storage"
 	"github.com/onflow/flow-go/storage/operation"
-	"github.com/onflow/flow-go/storage/operation/badgerimpl"
+	"github.com/onflow/flow-go/storage/operation/pebbleimpl"
+	"github.com/onflow/flow-go/storage/pebble"
 	"github.com/onflow/rosetta/cache"
 	"github.com/onflow/rosetta/config"
 	"github.com/onflow/rosetta/indexdb"
 	"github.com/onflow/rosetta/log"
 	"github.com/onflow/rosetta/model"
 	"github.com/onflow/rosetta/process"
+	zerolog "github.com/rs/zerolog/log"
 	"golang.org/x/crypto/openpgp"
 	"golang.org/x/crypto/openpgp/armor"
 	"google.golang.org/grpc/codes"
@@ -636,12 +637,19 @@ func (i *Indexer) runConsensusFollower(ctx context.Context) {
 	sporkDir := i.Chain.PathFor(spork.String())
 	i.downloadRootState(ctx, spork, sporkDir)
 	dbDir := filepath.Join(sporkDir, "consensus")
-	opts := badger.DefaultOptions(dbDir).WithLogger(log.Badger{Prefix: "consensus"})
-	db, err := badger.Open(opts)
+
+	dbLog := zerolog.With().Str("pebbledb", "consensusFollower").Logger()
+	db, err := pebble.SafeOpen(dbLog, dbDir)
 	if err != nil {
 		log.Fatalf("Failed to open consensus database at %s: %s", dbDir, err)
 	}
-	protocolDB := badgerimpl.ToDB(db)
+	process.SetExitHandler(func() {
+		log.Infof("Closing the consensus follower database")
+		if err := db.Close(); err != nil {
+			log.Errorf("Got error closing the consensus follower database: %s", err)
+		}
+	})
+	protocolDB := pebbleimpl.ToDB(db)
 	// Initialize a private key for joining the unstaked peer-to-peer network.
 	// This can be ephemeral, so we generate a new one each time we start.
 	seed := make([]byte, flowcrypto.KeyGenSeedMinLen)
@@ -657,11 +665,11 @@ func (i *Indexer) runConsensusFollower(ctx context.Context) {
 	for _, node := range spork.Consensus.SeedNodes {
 		rawkey, err := hex.DecodeString(node.PublicKey)
 		if err != nil {
-			log.Fatalf("Failed to hex decode the seed node key %q: %s", key, err)
+			log.Fatalf("Failed to hex decode the seed node key %q: %s", node.PublicKey, err)
 		}
 		pubkey, err := flowcrypto.DecodePublicKey(flowcrypto.ECDSAP256, rawkey)
 		if err != nil {
-			log.Fatalf("Failed to decode the seed node key %q: %s", key, err)
+			log.Fatalf("Failed to decode the seed node key %q: %s", rawkey, err)
 		}
 		nodes = append(nodes, follower.BootstrapNodeInfo{
 			Host:             node.Host,

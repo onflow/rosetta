@@ -11,6 +11,10 @@ import click  # pip install click
 def cli():
     pass
 
+network_identifier = {
+    "blockchain": "flow",
+    "network": "localnet",
+}
 
 # Shared function used internally but not standalone from CLI
 
@@ -24,10 +28,7 @@ def preprocess_transaction(rosetta_host_url, root_originator, operations, metada
     endpoint = "/construction/preprocess"
     target_url = rosetta_host_url + endpoint
     data = {
-        "network_identifier": {
-            "blockchain": "flow",
-            "network": "localnet"
-        },
+        "network_identifier": network_identifier,
         "operations": operations,
         "metadata": {
             "payer": root_originator
@@ -36,17 +37,17 @@ def preprocess_transaction(rosetta_host_url, root_originator, operations, metada
     if metadata:
         for key in metadata:
             data["metadata"][key] = metadata[key]
-    return request_router(target_url, data)
+    result = request_router(target_url, data)
+    if "options" not in result:
+        raise RuntimeError(result)
+    return result
 
 
 def metadata_transaction(rosetta_host_url, options):
     endpoint = "/construction/metadata"
     target_url = rosetta_host_url + endpoint
     data = {
-        "network_identifier": {
-            "blockchain": "flow",
-            "network": "localnet"
-        },
+        "network_identifier": network_identifier,
         "options": options
     }
     return request_router(target_url, data)
@@ -56,10 +57,7 @@ def payloads_transaction(rosetta_host_url, operations, protobuf):
     endpoint = "/construction/payloads"
     target_url = rosetta_host_url + endpoint
     data = {
-        "network_identifier": {
-            "blockchain": "flow",
-            "network": "localnet"
-        },
+        "network_identifier": network_identifier,
         "operations": operations,
         "metadata": {
             "protobuf": protobuf
@@ -72,10 +70,7 @@ def combine_transaction(rosetta_host_url, unsigned_tx, root_originator, hex_byte
     endpoint = "/construction/combine"
     target_url = rosetta_host_url + endpoint
     data = {
-        "network_identifier": {
-            "blockchain": "flow",
-            "network": "localnet"
-        },
+        "network_identifier": network_identifier,
         "unsigned_transaction": unsigned_tx,
         "signatures": [
             {
@@ -103,10 +98,7 @@ def submit_transaction(rosetta_host_url, signed_tx):
     endpoint = "/construction/submit"
     target_url = rosetta_host_url + endpoint
     data = {
-        "network_identifier": {
-            "blockchain": "flow",
-            "network": "localnet"
-        },
+        "network_identifier": network_identifier,
         "signed_transaction": signed_tx
     }
     return request_router(target_url, data)
