@@ -378,11 +378,6 @@ outer:
 		newCounter := 0
 		transfers := 0
 		for _, col := range cols {
-			// TODO(tav): We may want to index events from the system collection
-			// at some point in the future.
-			if col.system {
-				continue
-			}
 			for idx, txnResult := range col.txnResults {
 				select {
 				case <-ctx.Done():
