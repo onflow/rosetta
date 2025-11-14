@@ -224,6 +224,7 @@ outer:
 						}
 					}
 					// Request scheduled transactions and the final system transaction
+				fetchSystemTxs:
 					for range scheduledTxs + 1 {
 						txnIndex++
 						for {
@@ -239,8 +240,8 @@ outer:
 									return
 								}
 								if status.Code(err) == codes.NotFound {
-									// ensure we don't continuously request a nonexistent transaction
-									break
+									// no more transactions available
+									break fetchSystemTxs
 								}
 								time.Sleep(time.Second)
 								continue
