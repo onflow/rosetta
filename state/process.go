@@ -232,7 +232,8 @@ outer:
 							scheduledTxs++
 						}
 					}
-					for range scheduledTxs {
+					// Request scheduled transactions and the final system transaction
+					for range scheduledTxs + 1 {
 						txnIndex++
 						for {
 							select {
@@ -247,6 +248,10 @@ outer:
 									"Failed to fetch transaction result at index %d in block %x at height %d: %s",
 									txnIndex, hash, height, err,
 								)
+								if status.Code(err) == codes.NotFound {
+									// ensure we don't continuously request a nonexistent transaction
+									break
+								}
 								time.Sleep(time.Second)
 								continue
 							}
