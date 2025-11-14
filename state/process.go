@@ -225,7 +225,7 @@ outer:
 				if spork.Version >= 8 {
 					// check if the first tx in the system collection contains events indicating scheduled transactions were run
 					// We are already on the slow path where GetTransactionsByBlockID/GetTransactionResultsByBlockID has failed
-					systemTxEvents := col.txnResults[len(col.txnResults)-1].Events
+					systemTxEvents := col.txnResults[0].Events
 					scheduledTxs := 0
 					for _, event := range systemTxEvents {
 						if strings.HasSuffix(event.Type, ".FlowTransactionScheduler.PendingExecution") {
