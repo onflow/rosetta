@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"errors"
 	"strings"
 	"time"
 
@@ -127,19 +128,7 @@ outer:
 			for _, col := range block.CollectionGuarantees {
 				colData := &collectionData{}
 				cols = append(cols, colData)
-				initialCol := true
 				for {
-					select {
-					case <-ctx.Done():
-						span.End()
-						return
-					default:
-					}
-					if initialCol {
-						initialCol = false
-					} else {
-						time.Sleep(time.Second)
-					}
 					client := spork.AccessNodes.Client()
 					info, err := client.CollectionByID(ctx, col.CollectionId)
 					if err != nil {
@@ -147,25 +136,18 @@ outer:
 							"Failed to fetch collection %x in block %x at height %d: %s",
 							col.CollectionId, hash, height, err,
 						)
+						if errors.Is(err, context.Canceled) {
+							span.End()
+							return
+						}
+						time.Sleep(time.Second)
 						continue
 					}
 					tctx := ctx
 					for _, txnHash := range info.TransactionIds {
 						ctx = tctx
-						initialTxn := true
 						txnIndex++
 						for {
-							select {
-							case <-ctx.Done():
-								span.End()
-								return
-							default:
-							}
-							if initialTxn {
-								initialTxn = false
-							} else {
-								time.Sleep(time.Second)
-							}
 							client := spork.AccessNodes.Client()
 							info, err := client.Transaction(ctx, txnHash)
 							if err != nil {
@@ -173,6 +155,11 @@ outer:
 									"Failed to fetch transaction %x in block %x at height %d: %s",
 									txnHash, hash, height, err,
 								)
+								if errors.Is(err, context.Canceled) {
+									span.End()
+									return
+								}
+								time.Sleep(time.Second)
 								continue
 							}
 							client = spork.AccessNodes.Client()
@@ -182,6 +169,11 @@ outer:
 									"Failed to fetch transaction result for %x in block %x at height %d: %s",
 									txnHash, hash, height, err,
 								)
+								if errors.Is(err, context.Canceled) {
+									span.End()
+									return
+								}
+								time.Sleep(time.Second)
 								continue
 							}
 							colData.txns = append(colData.txns, info)
@@ -204,11 +196,6 @@ outer:
 				// We always retrieve the first transaction of the system collection.
 				txnIndex++
 				for {
-					select {
-					case <-ctx.Done():
-						return
-					default:
-					}
 					client := spork.AccessNodes.Client()
 					txnResult, err := client.TransactionResult(ctx, hash, uint32(txnIndex))
 					if err != nil {
@@ -216,6 +203,10 @@ outer:
 							"Failed to fetch transaction result at index %d in block %x at height %d: %s",
 							txnIndex, hash, height, err,
 						)
+						if errors.Is(err, context.Canceled) {
+							span.End()
+							return
+						}
 						time.Sleep(time.Second)
 						continue
 					}
@@ -236,11 +227,6 @@ outer:
 					for range scheduledTxs + 1 {
 						txnIndex++
 						for {
-							select {
-							case <-ctx.Done():
-								return
-							default:
-							}
 							client := spork.AccessNodes.Client()
 							txnResult, err := client.TransactionResult(ctx, hash, uint32(txnIndex))
 							if err != nil {
@@ -248,6 +234,10 @@ outer:
 									"Failed to fetch transaction result at index %d in block %x at height %d: %s",
 									txnIndex, hash, height, err,
 								)
+								if errors.Is(err, context.Canceled) {
+									span.End()
+									return
+								}
 								if status.Code(err) == codes.NotFound {
 									// ensure we don't continuously request a nonexistent transaction
 									break
