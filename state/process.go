@@ -162,7 +162,11 @@ outer:
 								time.Sleep(time.Second)
 								continue
 							}
-							client = spork.AccessNodes.Client()
+							colData.txns = append(colData.txns, info)
+							break
+						}
+						for {
+							client := spork.AccessNodes.Client()
 							txnResult, err := client.TransactionResult(ctx, hash, uint32(txnIndex))
 							if err != nil {
 								log.Errorf(
@@ -176,7 +180,6 @@ outer:
 								time.Sleep(time.Second)
 								continue
 							}
-							colData.txns = append(colData.txns, info)
 							colData.txnResults = append(colData.txnResults, txnResult)
 							break
 						}
@@ -249,6 +252,27 @@ outer:
 							col.txnResults = append(col.txnResults, txnResult)
 							break
 						}
+					}
+				}
+				// we have the transaction results for the system collection; now fetch transaction infos
+				for _, result := range col.txnResults {
+					for {
+						client := spork.AccessNodes.Client()
+						info, err := client.Transaction(ctx, result.TransactionId)
+						if err != nil {
+							log.Errorf(
+								"Failed to fetch transaction %x in block %x at height %d: %s",
+								result.TransactionId, hash, height, err,
+							)
+							if errors.Is(err, context.Canceled) {
+								span.End()
+								return
+							}
+							time.Sleep(time.Second)
+							continue
+						}
+						col.txns = append(col.txns, info)
+						break
 					}
 				}
 			}
