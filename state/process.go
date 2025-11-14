@@ -201,10 +201,7 @@ outer:
 			// the self-sealed root block of a spork (where a ZeroID is used for
 			// the event collection hash).
 			if !(spork.Prev != nil && height == spork.RootBlock) {
-				// TODO(tav): We check for just one transaction in the system
-				// collection. If this changes in the future, we will need to
-				// update the logic here to speculatively fetch more transaction
-				// results.
+				// We always retrieve the first transaction of the system collection.
 				txnIndex++
 				for {
 					select {
@@ -224,6 +221,39 @@ outer:
 					}
 					col.txnResults = append(col.txnResults, txnResult)
 					break
+				}
+				if spork.Version >= 8 {
+					// check if the first tx in the system collection contains events indicating scheduled transactions were run
+					// We are already on the slow path where GetTransactionsByBlockID/GetTransactionResultsByBlockID has failed
+					systemTxEvents := col.txnResults[len(col.txnResults)-1].Events
+					scheduledTxs := 0
+					for _, event := range systemTxEvents {
+						if strings.HasSuffix(event.Type, ".FlowTransactionScheduler.PendingExecution") {
+							scheduledTxs++
+						}
+					}
+					for range scheduledTxs {
+						txnIndex++
+						for {
+							select {
+							case <-ctx.Done():
+								return
+							default:
+							}
+							client := spork.AccessNodes.Client()
+							txnResult, err := client.TransactionResult(ctx, hash, uint32(txnIndex))
+							if err != nil {
+								log.Errorf(
+									"Failed to fetch transaction result at index %d in block %x at height %d: %s",
+									txnIndex, hash, height, err,
+								)
+								time.Sleep(time.Second)
+								continue
+							}
+							col.txnResults = append(col.txnResults, txnResult)
+							break
+						}
+					}
 				}
 			}
 		} else {
