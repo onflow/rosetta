@@ -42,6 +42,7 @@ func (i *Indexer) processBlock(rctx context.Context, spork *config.Spork, height
 	slowPath := false
 	unsealed := false
 	var span trace.Span
+	defer func() { span.End() }()
 outer:
 	for {
 		if span != nil {
@@ -137,7 +138,6 @@ outer:
 							col.CollectionId, hash, height, err,
 						)
 						if errors.Is(err, context.Canceled) {
-							span.End()
 							return
 						}
 						time.Sleep(time.Second)
@@ -156,7 +156,6 @@ outer:
 									txnHash, hash, height, err,
 								)
 								if errors.Is(err, context.Canceled) {
-									span.End()
 									return
 								}
 								time.Sleep(time.Second)
@@ -174,7 +173,6 @@ outer:
 									txnHash, hash, height, err,
 								)
 								if errors.Is(err, context.Canceled) {
-									span.End()
 									return
 								}
 								time.Sleep(time.Second)
@@ -207,7 +205,6 @@ outer:
 							txnIndex, hash, height, err,
 						)
 						if errors.Is(err, context.Canceled) {
-							span.End()
 							return
 						}
 						time.Sleep(time.Second)
@@ -239,7 +236,6 @@ outer:
 									txnIndex, hash, height, err,
 								)
 								if errors.Is(err, context.Canceled) {
-									span.End()
 									return
 								}
 								if status.Code(err) == codes.NotFound {
@@ -265,7 +261,6 @@ outer:
 								result.TransactionId, hash, height, err,
 							)
 							if errors.Is(err, context.Canceled) {
-								span.End()
 								return
 							}
 							time.Sleep(time.Second)
@@ -431,7 +426,6 @@ outer:
 			for idx, txnResult := range col.txnResults {
 				select {
 				case <-ctx.Done():
-					span.End()
 					return
 				default:
 				}
