@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
-	"errors"
 	"strings"
 	"time"
 
@@ -137,7 +136,7 @@ outer:
 							"Failed to fetch collection %x in block %x at height %d: %s",
 							col.CollectionId, hash, height, err,
 						)
-						if errors.Is(err, context.Canceled) {
+						if status.Code(err) == codes.Canceled {
 							return
 						}
 						time.Sleep(time.Second)
@@ -155,7 +154,7 @@ outer:
 									"Failed to fetch transaction %x in block %x at height %d: %s",
 									txnHash, hash, height, err,
 								)
-								if errors.Is(err, context.Canceled) {
+								if status.Code(err) == codes.Canceled {
 									return
 								}
 								time.Sleep(time.Second)
@@ -172,7 +171,7 @@ outer:
 									"Failed to fetch transaction result for %x in block %x at height %d: %s",
 									txnHash, hash, height, err,
 								)
-								if errors.Is(err, context.Canceled) {
+								if status.Code(err) == codes.Canceled {
 									return
 								}
 								time.Sleep(time.Second)
@@ -204,7 +203,7 @@ outer:
 							"Failed to fetch transaction result at index %d in block %x at height %d: %s",
 							txnIndex, hash, height, err,
 						)
-						if errors.Is(err, context.Canceled) {
+						if status.Code(err) == codes.Canceled {
 							return
 						}
 						time.Sleep(time.Second)
@@ -235,7 +234,7 @@ outer:
 									"Failed to fetch transaction result at index %d in block %x at height %d: %s",
 									txnIndex, hash, height, err,
 								)
-								if errors.Is(err, context.Canceled) {
+								if status.Code(err) == codes.Canceled {
 									return
 								}
 								if status.Code(err) == codes.NotFound {
@@ -260,7 +259,7 @@ outer:
 								"Failed to fetch transaction %x in block %x at height %d: %s",
 								result.TransactionId, hash, height, err,
 							)
-							if errors.Is(err, context.Canceled) {
+							if status.Code(err) == codes.Canceled {
 								return
 							}
 							time.Sleep(time.Second)
