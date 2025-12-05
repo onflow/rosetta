@@ -1428,10 +1428,10 @@ func decodeTransferOps(txn *entities.Transaction, proxy bool, signed bool) (*typ
 			errInvalidTransactionPayload, "unable to decode amount transaction arg: %s", err,
 		)
 	}
-	amount, ok := raw.(cadence.UInt64)
+	amount, ok := raw.(cadence.UFix64)
 	if !ok {
 		return nil, wrapErrorf(
-			errInvalidTransactionPayload, "unable to convert amount transaction arg to uint64",
+			errInvalidTransactionPayload, "unable to convert amount transaction arg to ufix64",
 		)
 	}
 	if proxy {
