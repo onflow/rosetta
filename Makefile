@@ -68,9 +68,9 @@ create-originator-derived-account:
 	ROOT_ORIGINATOR_PRIVATE_KEY=$$(grep '$(ORIGINATOR_NAME)' $(ACCOUNT_KEYS_FILENAME) | cut -d ',' -f4 ); \
 	ROOT_ORIGINATOR_ADDRESS=$$(grep '$(ORIGINATOR_NAME)' $(ACCOUNT_KEYS_FILENAME) | cut -d ',' -f5); \
 	echo "Originator address: $$ROOT_ORIGINATOR_ADDRESS"; \
-	TX_HASH=$$(python3 rosetta_handler.py rosetta-create-derived-account $(ROSETTA_HOST_URL) $$ROOT_ORIGINATOR_ADDRESS $$ROOT_ORIGINATOR_PUBLIC_KEY $$ROOT_ORIGINATOR_PRIVATE_KEY $$NEW_ACCOUNT_PUBLIC_ROSETTA_KEY); \
-	ADDRESS=$$(flow transactions get $$TX_HASH -f $(FLOW_JSON) -n $(ROSETTA_ENV) -o json | jq -r '.events[] | select(.type == "flow.AccountCreated") | .values.value.fields[] | select(.name == "address") | .value.value'); \
-	echo "TX_HASH: $$TX_HASH , ADDRESS: $$ADDRESS"; \
+	TX_HASH=$$(python3 rosetta_handler.py rosetta-create-derived-account $(ROSETTA_HOST_URL) $$ROOT_ORIGINATOR_ADDRESS $$ROOT_ORIGINATOR_PUBLIC_KEY $$ROOT_ORIGINATOR_PRIVATE_KEY $$NEW_ACCOUNT_PUBLIC_ROSETTA_KEY) && \
+	ADDRESS=$$(flow transactions get $$TX_HASH -f $(FLOW_JSON) -n $(ROSETTA_ENV) -o json | jq -r '.events[] | select(.type == "flow.AccountCreated") | .values.value.fields[] | select(.name == "address") | .value.value') && \
+	echo "TX_HASH: $$TX_HASH , ADDRESS: $$ADDRESS" && \
 	echo "$(NEW_ACCOUNT_NAME),$$NEW_ACCOUNT_PUBLIC_FLOW_KEY,$$NEW_ACCOUNT_PUBLIC_ROSETTA_KEY,$$NEW_ACCOUNT_PRIVATE_KEY,$$ADDRESS" >> $(ACCOUNT_KEYS_FILENAME);
 
 .PHONY: rosetta-transfer-funds

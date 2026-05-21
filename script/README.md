@@ -162,7 +162,7 @@ restarting it. This is required to ensure that the indexer knows which the origi
 add to`${ROSETTA_ENV}.json`).
 
 ```bash
-NEW_ACCOUNT_NAME=derived-account-1 ORIGINATOR_NAME=root-originator-1 make rosetta-create-sub-account
+NEW_ACCOUNT_NAME=derived-account-1 ORIGINATOR_NAME=root-originator-1 make create-originator-derived-account
 ```
 
 Rosetta should emit logs similar to the following after some time. The `WARN` log can be ignored
