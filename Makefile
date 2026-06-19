@@ -20,6 +20,13 @@ go-test:
 	go test -v github.com/onflow/rosetta/state/...
 	go test -v github.com/onflow/rosetta/script/...
 
+# End-to-end localnet compatibility test (script/README.md). Requires a flow-go
+# localnet up at 127.0.0.1:4001, the flow CLI, jq, and python3 with click +
+# requests; skips cleanly if any are absent. Build-tagged out of go-test.
+.PHONY: localnet-test
+localnet-test:
+	go test -tags localnet -v -timeout 20m github.com/onflow/rosetta/localnettest/...
+
 .PHONY: gen-originator-account
 gen-originator-account:
 	KEYS=$$(go run ./cmd/genkey/genkey.go -csv); \
