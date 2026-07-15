@@ -641,9 +641,6 @@ func toSignatureSlice(v [][]byte) []crypto.Signature {
 
 func verifyBlockHash(spork *config.Spork, hash []byte, height uint64, hdr *entities.BlockHeader, block *entities.Block) bool {
 	chainID := flow.ChainID("flow-" + spork.Chain.Network)
-	if spork.Chain.Network == "emulator" {
-		chainID = flow.ChainID("flow-benchnet")
-	}
 
 	var lastViewTC *flow.TimeoutCertificate
 	if hdr.LastViewTc != nil {
