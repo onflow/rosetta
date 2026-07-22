@@ -151,9 +151,12 @@ def rosetta_create_derived_account(rosetta_host_url, root_originator_address, ro
 def rosetta_transfer_funds(rosetta_host_url, payer_address, payer_public_key,
                            payer_private_key, recipient_address, amount, i=0):
     transaction = "transfer"
+    # FLOW amounts use 8 decimals (UFix64), matching the "decimals": 8 currency
+    # declared in the operations below.
     amount = float(amount)
-    amount_sent = str(-1 * int(amount * 10 ** 7))
-    amount_received = str(int(amount * 10 ** 7))
+    smallest_unit = int(round(amount * 10 ** 8))
+    amount_sent = str(-smallest_unit)
+    amount_received = str(smallest_unit)
     operations = [
         {
             "type": transaction,

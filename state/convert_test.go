@@ -160,7 +160,6 @@ func TestDeriveEventsHash(t *testing.T) {
 		spork := Mainnet28_SporkVersion8.create(ctx)
 		VerifyEventsHashForSpork(t, ctx, spork, 150_000_001, 150_000_011)
 	})
-
 }
 
 func VerifyEventsHashForSpork(t *testing.T, ctx context.Context, spork *config.Spork, startHeight uint64, endHeight uint64) {
