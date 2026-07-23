@@ -56,6 +56,14 @@ var GetBalances string
 //go:embed cadence/scripts/get-balances-basic.cdc
 var GetBalancesBasic string
 
+// GetFeeReceivers defines the template for the read-only transaction script
+// that returns the addresses of all accounts that may receive transaction fee
+// deposits: the FlowFees contract account plus any child fee accounts
+// configured on chain.
+//
+//go:embed cadence/scripts/get-fee-receivers.cdc
+var GetFeeReceivers string
+
 // GetProxyNonce defines the template for the read-only transaction script that
 // returns a proxy account's sequence number, i.e. the next nonce value for its
 // FlowColdStorageProxy Vault.

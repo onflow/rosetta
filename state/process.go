@@ -803,7 +803,7 @@ outer:
 							Receiver: receiver[:],
 							Type:     model.TransferType_DEPOSIT,
 						})
-						if bytes.Equal(receiver[:], i.feeAddr) {
+						if i.feeAddrs[string(receiver[:])] {
 							// NOTE(tav): When the deposit is to the fee
 							// address, just increment the fee amount.
 							fees += amount

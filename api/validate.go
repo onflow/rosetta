@@ -3,10 +3,78 @@ package api
 import (
 	"context"
 	"os"
+	"strings"
 	"time"
 
+	"github.com/onflow/cadence"
 	"github.com/onflow/rosetta/log"
 )
+
+// validateFeeReceivers checks the configured fee addresses (the FlowFees
+// contract account plus .contracts.fee_receivers) against the fee receiver
+// accounts the FlowFees contract rotates deposits across on chain. If an
+// on-chain receiver is missing from the config, fee deposits to it would be
+// misclassified as ordinary transfers, so we exit with a fatal error.
+// Configured addresses that are no longer on chain are fine — they may be
+// needed to classify fees in historical blocks.
+func (s *Server) validateFeeReceivers(ctx context.Context) {
+	if s.Offline {
+		return
+	}
+	client := s.DataAccessNodes.Client()
+	const attempts = 5
+	for attempt := 1; attempt <= attempts; attempt++ {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		if attempt > 1 {
+			time.Sleep(time.Duration(attempt) * time.Second)
+		}
+		latest, err := client.LatestBlockHeader(ctx)
+		if err != nil {
+			log.Errorf("Failed to get the latest block header to validate fee receivers: %s", err)
+			continue
+		}
+		resp, err := client.Execute(ctx, latest.Id, s.scriptGetFeeReceivers, nil)
+		if err != nil {
+			log.Errorf("Failed to execute the get_fee_receivers script: %s", err)
+			continue
+		}
+		arr, ok := resp.(cadence.Array)
+		if !ok {
+			log.Errorf("Failed to convert get_fee_receivers result to an array: got %T", resp)
+			return
+		}
+		onchain := []string{}
+		missing := []string{}
+		for _, val := range arr.Values {
+			addr, ok := val.(cadence.Address)
+			if !ok {
+				log.Errorf("Failed to convert get_fee_receivers element to an address: got %T", val)
+				return
+			}
+			onchain = append(onchain, addr.String())
+			if !s.feeAddrs[string(addr.Bytes())] {
+				missing = append(missing, addr.String())
+			}
+		}
+		if len(missing) > 0 {
+			log.Fatalf(
+				"On-chain fee receiver account(s) %s are missing from the configured fee addresses: "+
+					"fee deposits to them would be misclassified as transfers; add them to .contracts.fee_receivers",
+				strings.Join(missing, ", "),
+			)
+		}
+		log.Infof(
+			"Validated the configured fee addresses against the on-chain fee receivers: %s",
+			strings.Join(onchain, ", "),
+		)
+		return
+	}
+	log.Errorf("Giving up on fee receiver validation after %d attempts", attempts)
+}
 
 // NOTE(tav): We exit with a fatal error if the on-chain state doesn't match
 // what we expect. This assumes that we can trust the data returned to us by the
