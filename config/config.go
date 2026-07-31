@@ -89,8 +89,9 @@ type Contracts struct {
 	// fees across several receiver accounts: testnet does so since the
 	// FlowFees upgrade in transaction
 	// be210889dd26a320f530595bd369093e866e26c3941bf7a3d01f861db3eeda81 (the
-	// canonical list is flow-go's systemcontracts.FlowFeesReceivers). Without
-	// them, fee deposits are misclassified as ordinary transfers.
+	// canonical list is returned by FlowFees.getFeeReceiverAddresses() on
+	// chain). Without them, fee deposits are misclassified as ordinary
+	// transfers.
 	FeeReceivers []string `json:"fee_receivers"`
 }
 

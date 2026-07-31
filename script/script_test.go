@@ -37,9 +37,8 @@ func TestCompileGetFeeReceivers(t *testing.T) {
 	result := string(Compile("get_fee_receivers", GetFeeReceivers, chain))
 
 	for _, expected := range []string{
-		"getAuthAccount<auth(Storage) &Account>(0x912d5440f7e3769e)",
-		"let addresses: [Address] = [0x912d5440f7e3769e]",
-		"from: /storage/ChildFeeAccounts",
+		"import FlowFees from 0x912d5440f7e3769e",
+		"return FlowFees.getFeeReceiverAddresses()",
 	} {
 		if !strings.Contains(result, expected) {
 			t.Errorf("Expected compiled script to contain %q:\n%s", expected, result)
