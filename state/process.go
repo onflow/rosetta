@@ -904,9 +904,9 @@ outer:
 				// of our tracked accounts.
 				if i.isTracked(payer, newAccounts) && fees > 0 {
 					// NOTE(tav): This is theoretically possible if someone
-					// manually deposits FLOW into the FlowFees contract.
+					// manually deposits FLOW into a fee address.
 					//
-					// We explicitly disallow making direct transfers to the fee
+					// We explicitly disallow making direct transfers to a fee
 					// address within transaction construction. But, just in
 					// case, we add this additional check here which is
 					// effectively a fatal error.
