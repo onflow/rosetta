@@ -49,6 +49,13 @@ var Mainnet26_SporkVersion7 = sporkTemplate{
 	Version:     7,
 }
 
+var Mainnet28_SporkVersion8 = sporkTemplate{
+	AccessNodes: []access.NodeConfig{{Address: "access-001.mainnet28.nodes.onflow.org:9000"}},
+	Chain:       config.Chain{Network: "mainnet"},
+	RootBlock:   150_000_000,
+	Version:     8,
+}
+
 func TestVerifyBlockHash(t *testing.T) {
 	t.Run("mainnet24 spork version 6", func(t *testing.T) {
 		ctx := context.Background()
@@ -59,6 +66,11 @@ func TestVerifyBlockHash(t *testing.T) {
 		ctx := context.Background()
 		spork := Mainnet26_SporkVersion7.create(ctx)
 		VerifyBlocksForSpork(t, ctx, spork, 125_000_001, 125_000_011)
+	})
+	t.Run("mainnet28 spork version 8", func(t *testing.T) {
+		ctx := context.Background()
+		spork := Mainnet28_SporkVersion8.create(ctx)
+		VerifyBlocksForSpork(t, ctx, spork, 150_000_001, 150_000_011)
 	})
 }
 
@@ -88,6 +100,11 @@ func TestVerifyExecutionResultHash(t *testing.T) {
 		ctx := context.Background()
 		spork := Mainnet26_SporkVersion7.create(ctx)
 		VerifyExecutionResultsForSpork(t, ctx, spork, 125_000_001, 125_000_011)
+	})
+	t.Run("mainnet28 spork version 8", func(t *testing.T) {
+		ctx := context.Background()
+		spork := Mainnet28_SporkVersion8.create(ctx)
+		VerifyExecutionResultsForSpork(t, ctx, spork, 150_000_001, 150_000_011)
 	})
 }
 
@@ -128,16 +145,22 @@ func VerifyExecutionResultsForSpork(t *testing.T, ctx context.Context, spork *co
 }
 
 func TestDeriveEventsHash(t *testing.T) {
-	t.Run("mainnet24 / spork version 6", func(t *testing.T) {
+	t.Run("mainnet24 spork version 6", func(t *testing.T) {
 		ctx := context.Background()
 		spork := Mainnet24_SporkVersion6.create(ctx)
 		VerifyEventsHashForSpork(t, ctx, spork, 65264620, 65264630)
 	})
-	t.Run("mainnet26 / spork version 7", func(t *testing.T) {
+	t.Run("mainnet26 spork version 7", func(t *testing.T) {
 		ctx := context.Background()
 		spork := Mainnet26_SporkVersion7.create(ctx)
 		VerifyEventsHashForSpork(t, ctx, spork, 125_000_001, 125_000_011)
 	})
+	t.Run("mainnet28 spork version 8", func(t *testing.T) {
+		ctx := context.Background()
+		spork := Mainnet28_SporkVersion8.create(ctx)
+		VerifyEventsHashForSpork(t, ctx, spork, 150_000_001, 150_000_011)
+	})
+
 }
 
 func VerifyEventsHashForSpork(t *testing.T, ctx context.Context, spork *config.Spork, startHeight uint64, endHeight uint64) {

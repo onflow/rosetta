@@ -25,6 +25,14 @@ var (
 	ErrBlockNotIndexed = errors.New("indexdb: block not indexed")
 )
 
+var (
+	accountPrefix     = []byte("a")
+	blockPrefix       = []byte("b")
+	hash2HeightPrefix = []byte("c")
+	height2HashPrefix = []byte("d")
+	isProxyPrefix     = []byte("p")
+)
+
 // NOTE(tav): We store the blockchain data within Badger using the following
 // key/value structure:
 //
@@ -80,10 +88,9 @@ func (s *Store) Accounts() (map[[8]byte]bool, error) {
 	err := s.db.View(func(txn *badger.Txn) error {
 		it := txn.NewIterator(badger.IteratorOptions{})
 		defer it.Close()
-		prefix := []byte("a")
-		it.Seek(prefix)
+		it.Seek(accountPrefix)
 		for {
-			if !it.ValidForPrefix(prefix) {
+			if !it.ValidForPrefix(accountPrefix) {
 				break
 			}
 			key := it.Item().Key()
@@ -94,10 +101,9 @@ func (s *Store) Accounts() (map[[8]byte]bool, error) {
 		}
 		it = txn.NewIterator(badger.IteratorOptions{})
 		defer it.Close()
-		prefix = []byte("p")
-		it.Seek(prefix)
+		it.Seek(isProxyPrefix)
 		for {
-			if !it.ValidForPrefix(prefix) {
+			if !it.ValidForPrefix(isProxyPrefix) {
 				break
 			}
 			key := it.Item().Key()
@@ -127,10 +133,9 @@ func (s *Store) AccountsInfo() (map[string]*AccountInfo, error) {
 	err := s.db.View(func(txn *badger.Txn) error {
 		it := txn.NewIterator(badger.IteratorOptions{})
 		defer it.Close()
-		prefix := []byte("a")
-		it.Seek(prefix)
+		it.Seek(accountPrefix)
 		for {
-			if !it.ValidForPrefix(prefix) {
+			if !it.ValidForPrefix(accountPrefix) {
 				break
 			}
 			item := it.Item()
@@ -163,10 +168,9 @@ func (s *Store) AccountsInfo() (map[string]*AccountInfo, error) {
 	err = s.db.View(func(txn *badger.Txn) error {
 		it := txn.NewIterator(badger.IteratorOptions{})
 		defer it.Close()
-		prefix := []byte("p")
-		it.Seek(prefix)
+		it.Seek(isProxyPrefix)
 		for {
-			if !it.ValidForPrefix(prefix) {
+			if !it.ValidForPrefix(isProxyPrefix) {
 				break
 			}
 			key := it.Item().Key()
@@ -308,7 +312,7 @@ func (s *Store) Genesis() *model.BlockMeta {
 // given height.
 func (s *Store) HasBalance(acct []byte, height uint64) (bool, error) {
 	key := make([]byte, 1+8+8)
-	key[0] = 'a'
+	key[0] = 'a' // accountPrefix
 	copy(key[1:9], acct)
 	binary.BigEndian.PutUint64(key[9:], height)
 	ok := false
@@ -337,7 +341,7 @@ func (s *Store) HashForHeight(height uint64) ([]byte, error) {
 	var hash []byte
 	heightEnc := make([]byte, 8)
 	binary.BigEndian.PutUint64(heightEnc, height)
-	key := append([]byte("d"), heightEnc...)
+	key := append(height2HashPrefix, heightEnc...)
 	err := s.db.View(func(txn *badger.Txn) error {
 		item, err := txn.Get(key)
 		if err != nil {
@@ -363,7 +367,7 @@ func (s *Store) HashForHeight(height uint64) ([]byte, error) {
 // HeightForHash returns the block height for the given hash.
 func (s *Store) HeightForHash(hash []byte) (uint64, error) {
 	height := uint64(0)
-	key := append([]byte("c"), hash...)
+	key := append(hash2HeightPrefix, hash...)
 	err := s.db.View(func(txn *badger.Txn) error {
 		item, err := txn.Get(key)
 		if err != nil {
@@ -423,7 +427,7 @@ func (s *Store) Index(ctx context.Context, height uint64, hash []byte, block *mo
 				}
 				if len(op.ProxyPublicKey) > 0 {
 					key := make([]byte, 17)
-					key[0] = 'p'
+					key[0] = 'p' // isProxyPrefix
 					copy(key[1:], op.Account)
 					binary.BigEndian.PutUint64(key[9:], height)
 					proxyAccts = append(proxyAccts, key)
@@ -440,7 +444,7 @@ func (s *Store) Index(ctx context.Context, height uint64, hash []byte, block *mo
 	updates := make([]accountUpdate, len(accts))
 	for acct, diff := range accts {
 		key := make([]byte, 1+8+8)
-		key[0] = 'a'
+		key[0] = 'a' // accountPrefix
 		copy(key[1:], acct)
 		copy(key[9:], hval)
 		updates[i] = accountUpdate{
@@ -449,13 +453,13 @@ func (s *Store) Index(ctx context.Context, height uint64, hash []byte, block *mo
 		}
 		i++
 	}
-	blockKey := append([]byte("b"), hval...)
+	blockKey := append(blockPrefix, hval...)
 	blockValue, err := proto.Marshal(block)
 	if err != nil {
 		log.Fatalf("Failed to encode model.IndexedBlock: %s", err)
 	}
-	hash2heightKey := append([]byte("c"), hash...)
-	height2hashKey := append([]byte("d"), hval...)
+	hash2heightKey := append(hash2HeightPrefix, hash...)
+	height2hashKey := append(height2HashPrefix, hval...)
 	latest = &model.BlockMeta{
 		Hash:      hash,
 		Height:    height,
@@ -576,10 +580,9 @@ func (s *Store) PurgeProxyAccounts() {
 	err := s.db.View(func(txn *badger.Txn) error {
 		it := txn.NewIterator(badger.IteratorOptions{})
 		defer it.Close()
-		prefix := []byte("p")
-		it.Seek(prefix)
+		it.Seek(isProxyPrefix)
 		for {
-			if !it.ValidForPrefix(prefix) {
+			if !it.ValidForPrefix(isProxyPrefix) {
 				break
 			}
 			key := it.Item().KeyCopy(nil)
@@ -595,7 +598,7 @@ func (s *Store) PurgeProxyAccounts() {
 	err = s.db.View(func(txn *badger.Txn) error {
 		it := txn.NewIterator(badger.IteratorOptions{})
 		defer it.Close()
-		prefix := []byte("a")
+		prefix := accountPrefix
 		it.Seek(prefix)
 		for {
 			if !it.ValidForPrefix(prefix) {
@@ -640,7 +643,7 @@ func (s *Store) ResetTo(base uint64) error {
 	delKeys := [][]byte{}
 	err := s.db.View(func(txn *badger.Txn) error {
 		it := txn.NewIterator(badger.IteratorOptions{})
-		prefix := []byte("a")
+		prefix := accountPrefix
 		it.Seek(prefix)
 		for {
 			if !it.ValidForPrefix(prefix) {
@@ -662,7 +665,7 @@ func (s *Store) ResetTo(base uint64) error {
 	}
 	err = s.db.View(func(txn *badger.Txn) error {
 		it := txn.NewIterator(badger.IteratorOptions{})
-		prefix := []byte("p")
+		prefix := isProxyPrefix
 		it.Seek(prefix)
 		for {
 			if !it.ValidForPrefix(prefix) {
@@ -685,7 +688,7 @@ func (s *Store) ResetTo(base uint64) error {
 	last := uint64(0)
 	err = s.db.View(func(txn *badger.Txn) error {
 		it := txn.NewIterator(badger.IteratorOptions{})
-		prefix := []byte("d")
+		prefix := height2HashPrefix
 		it.Seek(prefix)
 		for {
 			if !it.ValidForPrefix(prefix) {
@@ -695,21 +698,21 @@ func (s *Store) ResetTo(base uint64) error {
 			key := item.Key()
 			height := binary.BigEndian.Uint64(key[1:])
 			if height > base {
-				key = item.KeyCopy(nil)
-				delKeys = append(delKeys, key)
-				key = make([]byte, 9)
-				key[0] = 'b'
-				binary.BigEndian.PutUint64(key[1:], height)
-				delKeys = append(delKeys, key)
+				height2HashKey := item.KeyCopy(nil)
+				delKeys = append(delKeys, height2HashKey)
+				blockKey := make([]byte, 9)
+				blockKey[0] = 'b' // blockPrefix
+				binary.BigEndian.PutUint64(blockKey[1:], height)
+				delKeys = append(delKeys, blockKey)
 				hash, err := item.ValueCopy(nil)
 				if err != nil {
 					it.Close()
 					return err
 				}
-				key = make([]byte, len(hash)+1)
-				key[0] = 'c'
-				copy(key[1:], hash)
-				delKeys = append(delKeys, key)
+				hash2HeightKey := make([]byte, len(hash)+1)
+				hash2HeightKey[0] = 'c' // hash2HeightPrefix
+				copy(hash2HeightKey[1:], hash)
+				delKeys = append(delKeys, hash2HeightKey)
 			} else {
 				last = height
 			}
@@ -775,15 +778,15 @@ func (s *Store) SetGenesis(val *model.BlockMeta) error {
 	}
 	hval := make([]byte, 8)
 	binary.BigEndian.PutUint64(hval, val.Height)
-	blockKey := append([]byte("b"), hval...)
+	blockKey := append(blockPrefix, hval...)
 	blockValue, err := proto.Marshal(&model.IndexedBlock{
 		Timestamp: val.Timestamp,
 	})
 	if err != nil {
 		log.Fatalf("Failed to encode model.IndexedBlock: %s", err)
 	}
-	hash2heightKey := append([]byte("c"), val.Hash...)
-	height2hashKey := append([]byte("d"), hval...)
+	hash2heightKey := append(hash2HeightPrefix, val.Hash...)
+	height2hashKey := append(height2HashPrefix, hval...)
 	err = s.db.Update(func(txn *badger.Txn) error {
 		if err := txn.Set([]byte("genesis"), genesis); err != nil {
 			return err
