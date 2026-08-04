@@ -21,7 +21,6 @@ func (s *Server) validateFeeReceivers(ctx context.Context) {
 	if s.Offline {
 		return
 	}
-	client := s.DataAccessNodes.Client()
 	const attempts = 5
 	for attempt := 1; attempt <= attempts; attempt++ {
 		select {
@@ -32,6 +31,9 @@ func (s *Server) validateFeeReceivers(ctx context.Context) {
 		if attempt > 1 {
 			time.Sleep(time.Duration(attempt) * time.Second)
 		}
+		// Pick a client on each attempt so a retry can land on a different
+		// access node if the previously selected one is unavailable.
+		client := s.DataAccessNodes.Client()
 		latest, err := client.LatestBlockHeader(ctx)
 		if err != nil {
 			log.Errorf("Failed to get the latest block header to validate fee receivers: %s", err)
