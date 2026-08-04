@@ -34,6 +34,9 @@ const (
 	originatorName = "root-originator-1"
 	derivedName    = "derived-account-1"
 	transferAmount = "50"
+	// transferAmountUnits is transferAmount in Rosetta's smallest FLOW unit
+	// (8 decimals).
+	transferAmountUnits = 50 * 100_000_000
 )
 
 // indexerFatalErrors are server log lines meaning the indexer is wedged and will
@@ -103,6 +106,9 @@ func TestLocalnetCompat(t *testing.T) {
 
 	t.Log("waiting for the transfer to be indexed (recipient balance increases)")
 	after := waitForBalance(t, srv, base, cfg.Network, recipient, func(v uint64) bool { return v > before }, 3*time.Minute)
+	if after-before != transferAmountUnits {
+		t.Fatalf("recipient balance rose by %d, want exactly %d", after-before, uint64(transferAmountUnits))
+	}
 	t.Logf("recipient balance %d -> %d: Rosetta indexed the transfer — compatibility confirmed", before, after)
 }
 

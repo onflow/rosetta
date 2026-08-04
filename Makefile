@@ -19,6 +19,8 @@ go-build:
 go-test:
 	go test -v github.com/onflow/rosetta/state/...
 	go test -v github.com/onflow/rosetta/script/...
+	# Compile (but don't run) the build-tagged localnet test so it can't rot.
+	go test -tags localnet -run '^$$' github.com/onflow/rosetta/localnettest/...
 
 # End-to-end localnet compatibility test (script/README.md). Requires a flow-go
 # localnet up at 127.0.0.1:4001, the flow CLI, jq, and python3 with click +
@@ -39,16 +41,9 @@ gen-originator-account:
 	echo "Private Key: $$PRIVATE_KEY"; \
 	address=$$(flow accounts create --sig-algo ECDSA_secp256k1 --key $$PUBLIC_FLOW_KEY $(FLOW_CLI_FLAGS) | grep "Address" | cut -d' ' -f2 | cut -c3-);\
 	echo "Address created: $$address"; \
-	jq --arg account_name "$(ACCOUNT_NAME)" '.accounts[$$account_name] = { \
-		"address": "'$$address'", \
-		"key": { \
-			"type": "hex", \
-			"index": 0, \
-			"signatureAlgorithm": "ECDSA_secp256k1", \
-			"hashAlgorithm": "SHA3_256", \
-			"privateKey": "'$$PRIVATE_KEY'" \
-		} \
-	}' "${FLOW_JSON}" > flow.json.tmp && mv flow.json.tmp "${FLOW_JSON}" || { echo "Failed to update ${FLOW_JSON} with jq"; exit 1; }; \
+	jq --arg account_name "$(ACCOUNT_NAME)" --arg address "$$address" --arg private_key "$$PRIVATE_KEY" \
+		'.accounts[$$account_name] = {address: $$address, key: {type: "hex", index: 0, signatureAlgorithm: "ECDSA_secp256k1", hashAlgorithm: "SHA3_256", privateKey: $$private_key}}' \
+		"${FLOW_JSON}" > flow.json.tmp && mv flow.json.tmp "${FLOW_JSON}" || { echo "Failed to update ${FLOW_JSON} with jq"; exit 1; }; \
 	jq --arg address "$$address" '.originators += [$$address]' "${ROSETTA_ENV}.json" > env.json.tmp && mv env.json.tmp "${ROSETTA_ENV}.json"; \
 	echo "$(ACCOUNT_NAME),$$KEYS,0x$$address" >> $(ACCOUNT_KEYS_FILENAME); \
 	echo "Updated $(FLOW_JSON), $(ROSETTA_ENV).json and $(ACCOUNT_KEYS_FILENAME)";
@@ -88,7 +83,7 @@ rosetta-transfer-funds:
 	echo "Payer address: $$PAYER_ADDRESS"; \
 	RECIPIENT_ADDRESS=$$(grep '$(RECIPIENT_NAME)' $(ACCOUNT_KEYS_FILENAME) | cut -d ',' -f5); \
 	echo "Recipient address: $$RECIPIENT_ADDRESS"; \
-	TX_HASH=$$(python3 rosetta_handler.py rosetta-transfer-funds $(ROSETTA_HOST_URL) $$PAYER_ADDRESS $$PAYER_PUBLIC_KEY $$PAYER_PRIVATE_KEY $$RECIPIENT_ADDRESS $$AMOUNT); \
+	TX_HASH=$$(python3 rosetta_handler.py rosetta-transfer-funds $(ROSETTA_HOST_URL) $$PAYER_ADDRESS $$PAYER_PUBLIC_KEY $$PAYER_PRIVATE_KEY $$RECIPIENT_ADDRESS $$AMOUNT) && \
 	echo "Funding sent: $$TX_HASH";
 
 # Use this target to verify that the accounts configured in the Rosetta environment JSON have the specified contracts deployed
