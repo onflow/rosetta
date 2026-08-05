@@ -13,7 +13,7 @@ require (
 	github.com/libp2p/go-libp2p v0.38.2
 	github.com/onflow/cadence v1.10.5
 	github.com/onflow/crypto v0.25.4
-	github.com/onflow/flow-go v0.50.1-0.20260731132755-2799d6025ac3
+	github.com/onflow/flow-go v0.50.1-0.20260804214725-b73fea20b252
 	github.com/onflow/flow/protobuf/go/flow v0.4.20
 	github.com/rs/zerolog v1.29.0
 	github.com/stretchr/testify v1.11.1
