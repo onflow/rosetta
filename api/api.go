@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -27,6 +28,7 @@ const (
 	callAccountPublicKeys       = "account_public_keys"
 	callBalanceValidationStatus = "balance_validation_status"
 	callEcho                    = "echo"
+	callFeeValidationStatus     = "fee_receiver_validation_status"
 	callLatestBlock             = "latest_block"
 	callListAccounts            = "list_accounts"
 	callVerifyAddress           = "verify_address"
@@ -48,6 +50,7 @@ var (
 		callAccountPublicKeys,
 		callBalanceValidationStatus,
 		callEcho,
+		callFeeValidationStatus,
 		callLatestBlock,
 		callListAccounts,
 		callVerifyAddress,
@@ -96,13 +99,18 @@ type Server struct {
 	scriptSetContract        []byte
 	validation               *validation
 	validationMu             sync.RWMutex // protects validation
+	feeValidation            *feeValidation
+	feeValidationMu          sync.RWMutex // protects feeValidation
 }
 
 // Run initializes the server and starts serving Rosetta API calls.
 func (s *Server) Run(ctx context.Context) {
 	s.compileScripts()
 	s.validation = &validation{
-		status: "not_started",
+		status: validationNotStarted,
+	}
+	s.feeValidation = &feeValidation{
+		status: validationNotStarted,
 	}
 	go s.validateBalances(ctx)
 	s.feeAddrs = s.Chain.Contracts.FeeAddresses()
@@ -212,37 +220,95 @@ func (s *Server) setIndexedStateErr(format string, a ...interface{}) {
 	s.mu.Unlock()
 	s.validationMu.Lock()
 	defer s.validationMu.Unlock()
-	if s.validation.status == "failure" {
+	if s.validation.status == validationFailure {
 		return
 	}
 	s.validation = &validation{
 		err:    msg,
-		status: "failure",
+		status: validationFailure,
+	}
+}
+
+func (s *Server) getFeeValidationStatus() *feeValidation {
+	s.feeValidationMu.RLock()
+	defer s.feeValidationMu.RUnlock()
+	return s.feeValidation
+}
+
+func (s *Server) setFeeValidationRetrying(format string, a ...interface{}) {
+	msg := fmt.Sprintf(format, a...)
+	log.Errorf("%s", msg)
+	s.feeValidationMu.Lock()
+	defer s.feeValidationMu.Unlock()
+	// We only track transient errors while we're still waiting for the first
+	// definitive result. Once we have one, it stays in place until the next
+	// definitive result replaces it.
+	if s.feeValidation.status == validationSuccess || s.feeValidation.status == validationFailure {
+		return
+	}
+	s.feeValidation = &feeValidation{
+		err:    msg,
+		status: validationInProgress,
+	}
+}
+
+func (s *Server) setFeeValidationFailure(onchain []string, missing []string) {
+	msg := fmt.Sprintf(
+		"On-chain fee receiver account(s) %s are missing from the configured fee addresses: "+
+			"fee deposits to them would be misclassified as transfers; add them to .contracts.fee_receivers",
+		strings.Join(missing, ", "),
+	)
+	log.Errorf("%s", msg)
+	s.feeValidationMu.Lock()
+	defer s.feeValidationMu.Unlock()
+	s.feeValidation = &feeValidation{
+		err:     msg,
+		missing: missing,
+		onchain: onchain,
+		status:  validationFailure,
+	}
+}
+
+func (s *Server) setFeeValidationSuccess(onchain []string) {
+	s.feeValidationMu.Lock()
+	prev := s.feeValidation.status
+	s.feeValidation = &feeValidation{
+		onchain: onchain,
+		status:  validationSuccess,
+	}
+	s.feeValidationMu.Unlock()
+	// We only log on transitions so that the periodic re-checks don't flood
+	// the logs.
+	if prev != validationSuccess {
+		log.Infof(
+			"Validated the configured fee addresses against the on-chain fee receivers: %s",
+			strings.Join(onchain, ", "),
+		)
 	}
 }
 
 func (s *Server) setValidationProgress(accounts int, checked int) {
 	s.validationMu.Lock()
 	defer s.validationMu.Unlock()
-	if s.validation.status == "failure" || s.validation.status == "success" {
+	if s.validation.status == validationFailure || s.validation.status == validationSuccess {
 		return
 	}
 	s.validation = &validation{
 		accounts: accounts,
 		checked:  checked,
-		status:   "in_progress",
+		status:   validationInProgress,
 	}
 }
 
 func (s *Server) setValidationSuccess(accounts int) {
 	s.validationMu.Lock()
 	defer s.validationMu.Unlock()
-	if s.validation.status == "failure" {
+	if s.validation.status == validationFailure {
 		return
 	}
 	s.validation = &validation{
 		accounts: accounts,
-		status:   "success",
+		status:   validationSuccess,
 	}
 }
 
@@ -293,9 +359,44 @@ type txnIntent struct {
 	sender         []byte
 }
 
+// validationStatus enumerates the states a background validation process can
+// be in.
+type validationStatus int
+
+const (
+	validationNotStarted validationStatus = iota
+	validationInProgress
+	validationSuccess
+	validationFailure
+)
+
+// String returns the status in the form reported by the /call endpoint.
+func (v validationStatus) String() string {
+	switch v {
+	case validationNotStarted:
+		return "not_started"
+	case validationInProgress:
+		return "in_progress"
+	case validationSuccess:
+		return "success"
+	case validationFailure:
+		return "failure"
+	default:
+		log.Fatalf("Unsupported validation status %d", int(v))
+		panic("unreachable code")
+	}
+}
+
 type validation struct {
 	accounts int
 	checked  int
 	err      string
-	status   string
+	status   validationStatus
+}
+
+type feeValidation struct {
+	err     string
+	missing []string
+	onchain []string
+	status  validationStatus
 }

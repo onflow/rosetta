@@ -375,9 +375,12 @@ config file:
 ```
 
   * The canonical list is returned by `FlowFees.getFeeReceiverAddresses()` on
-    chain. On startup, the server validates the configured addresses against
-    that list and exits with a fatal error if any on-chain receiver is
-    missing from the config.
+    chain. The server validates the configured addresses against that list in
+    the background: retrying until an access node responds, and then
+    re-checking periodically so receivers added on chain while the server is
+    running are still detected. If any on-chain receiver is missing from the
+    config, the server logs an error and reports the mismatch via the
+    `fee_receiver_validation_status` method of the `/call` endpoint.
 
 * `data_dir: string`
 
