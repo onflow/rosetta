@@ -357,6 +357,28 @@ config file:
     use the zero address `"0000000000000000"` to disable support for proxy
     accounts.
 
+  * The optional `fee_receivers` key lists accounts, in addition to the
+    FlowFees contract account, that receive transaction fee deposits. Networks
+    may distribute fees across several receiver accounts (testnet does so
+    since the concurrent fee collection upgrade), and without them configured,
+    fee deposits to those accounts would be misclassified as ordinary
+    transfers, e.g.
+
+```json
+{
+    "fee_receivers": [
+        "e1ac6b2740d204c2",
+        "05cbd2fa5128041d",
+        "139fb7c9c82c0e7c"
+    ]
+}
+```
+
+  * The canonical list is returned by `FlowFees.getFeeReceiverAddresses()` on
+    chain. On startup, the server validates the configured addresses against
+    that list and exits with a fatal error if any on-chain receiver is
+    missing from the config.
+
 * `data_dir: string`
 
   * This defines the path to the data directory where the server stores data,

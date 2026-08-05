@@ -523,13 +523,13 @@ func (s *Server) ConstructionPreprocess(ctx context.Context, r *types.Constructi
 	if xerr != nil {
 		return nil, xerr
 	}
-	// NOTE(tav): We explicitly error on transfers to the fee address so as to
+	// NOTE(tav): We explicitly error on transfers to a fee address so as to
 	// simplify our event processing logic.
-	if bytes.Equal(intent.receiver, s.feeAddr) {
+	if s.feeAddrs[string(intent.receiver)] {
 		return nil, wrapErrorf(
 			errInvalidOpsIntent,
-			"cannot make transfers to the fee address: 0x%s",
-			s.Chain.Contracts.FlowFees,
+			"cannot make transfers to the fee address: 0x%x",
+			intent.receiver,
 		)
 	}
 	opts := &model.ConstructOpts{

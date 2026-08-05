@@ -55,7 +55,7 @@ type Indexer struct {
 	Store               *indexdb.Store
 	accts               map[string]bool
 	consensus           storage.DB
-	feeAddr             []byte
+	feeAddrs            map[string]bool
 	jobs                chan uint64
 	lastIndexed         *model.BlockMeta
 	liveRoot            *model.BlockMeta
@@ -541,13 +541,7 @@ func (i *Indexer) initState() {
 	for acct, isProxy := range accts {
 		i.accts[string(acct[:])] = isProxy
 	}
-	i.feeAddr, err = hex.DecodeString(i.Chain.Contracts.FlowFees)
-	if err != nil {
-		log.Fatalf(
-			"Invalid FlowFees contract address %q: %s",
-			i.Chain.Contracts.FlowFees, err,
-		)
-	}
+	i.feeAddrs = i.Chain.Contracts.FeeAddresses()
 	i.originators = map[string]bool{}
 	for _, addr := range i.Chain.Originators {
 		i.originators[string(addr)] = true

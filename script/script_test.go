@@ -2,8 +2,10 @@ package script
 
 import (
 	"context"
-	"github.com/onflow/rosetta/config"
+	"strings"
 	"testing"
+
+	"github.com/onflow/rosetta/config"
 )
 
 // TestCompile tests the Compile function
@@ -20,5 +22,26 @@ func TestCompileComputeFees(t *testing.T) {
 	// Compare result with expected output
 	if string(result) != expected {
 		t.Errorf("Expected %q but got %q", expected, string(result))
+	}
+}
+
+// TestCompileGetFeeReceivers tests that the FlowFees address is rendered into
+// the get-fee-receivers script.
+//
+// NOTE: config.Init cannot be called a second time within the same test
+// binary (it locks the Badger cache database), so the chain is constructed
+// directly.
+func TestCompileGetFeeReceivers(t *testing.T) {
+	chain := &config.Chain{Contracts: &config.Contracts{FlowFees: "912d5440f7e3769e"}}
+
+	result := string(Compile("get_fee_receivers", GetFeeReceivers, chain))
+
+	for _, expected := range []string{
+		"import FlowFees from 0x912d5440f7e3769e",
+		"return FlowFees.getFeeReceiverAddresses()",
+	} {
+		if !strings.Contains(result, expected) {
+			t.Errorf("Expected compiled script to contain %q:\n%s", expected, result)
+		}
 	}
 }

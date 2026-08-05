@@ -803,7 +803,7 @@ outer:
 							Receiver: receiver[:],
 							Type:     model.TransferType_DEPOSIT,
 						})
-						if bytes.Equal(receiver[:], i.feeAddr) {
+						if i.feeAddrs[string(receiver[:])] {
 							// NOTE(tav): When the deposit is to the fee
 							// address, just increment the fee amount.
 							fees += amount
@@ -904,9 +904,9 @@ outer:
 				// of our tracked accounts.
 				if i.isTracked(payer, newAccounts) && fees > 0 {
 					// NOTE(tav): This is theoretically possible if someone
-					// manually deposits FLOW into the FlowFees contract.
+					// manually deposits FLOW into a fee address.
 					//
-					// We explicitly disallow making direct transfers to the fee
+					// We explicitly disallow making direct transfers to a fee
 					// address within transaction construction. But, just in
 					// case, we add this additional check here which is
 					// effectively a fatal error.

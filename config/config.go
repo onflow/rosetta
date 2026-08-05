@@ -84,6 +84,33 @@ type Contracts struct {
 	FlowToken            string `json:"flow_token"`
 	FungibleToken        string `json:"fungible_token"`
 	FlowColdStorageProxy string `json:"flow_cold_storage_proxy"`
+	// FeeReceivers lists accounts, in addition to the FlowFees contract
+	// account, that receive transaction fee deposits. Networks may distribute
+	// fees across several receiver accounts: testnet does so since the
+	// FlowFees upgrade in transaction
+	// be210889dd26a320f530595bd369093e866e26c3941bf7a3d01f861db3eeda81 (the
+	// canonical list is returned by FlowFees.getFeeReceiverAddresses() on
+	// chain). Without them, fee deposits are misclassified as ordinary
+	// transfers.
+	FeeReceivers []string `json:"fee_receivers"`
+}
+
+// FeeAddresses returns the set of accounts whose FLOW deposits represent
+// transaction fees: the FlowFees contract account plus any configured
+// fee_receivers. The map is keyed by the raw 8-byte address string.
+func (c *Contracts) FeeAddresses() map[string]bool {
+	addrs := map[string]bool{}
+	for _, src := range append([]string{c.FlowFees}, c.FeeReceivers...) {
+		addr, err := hex.DecodeString(src)
+		if err != nil {
+			log.Fatalf("Invalid fee address %q: %s", src, err)
+		}
+		if len(addr) != 8 {
+			log.Fatalf("Invalid fee address %q: expected 8 bytes, got %d", src, len(addr))
+		}
+		addrs[string(addr)] = true
+	}
+	return addrs
 }
 
 // Consensus defines the metadata needed to initialize a consensus follower for

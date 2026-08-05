@@ -6,6 +6,11 @@
         }
     ],
     "contracts": {
+        "fee_receivers": [
+            "e1ac6b2740d204c2",
+            "05cbd2fa5128041d",
+            "139fb7c9c82c0e7c"
+        ],
         "flow_cold_storage_proxy": "0000000000000000",
         "flow_fees": "912d5440f7e3769e",
         "flow_token": "7e60df042a9c0868",

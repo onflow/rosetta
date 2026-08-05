@@ -78,7 +78,7 @@ type Server struct {
 	Indexer                  *state.Indexer
 	Offline                  bool
 	Port                     uint16
-	feeAddr                  []byte
+	feeAddrs                 map[string]bool
 	genesis                  *model.BlockMeta
 	indexedStateErr          *types.Error
 	mu                       sync.RWMutex // protects indexedStateErr
@@ -89,6 +89,7 @@ type Server struct {
 	scriptCreateProxyAccount []byte
 	scriptGetBalances        []byte
 	scriptGetBalancesBasic   []byte
+	scriptGetFeeReceivers    []byte
 	scriptGetProxyNonce      []byte
 	scriptGetProxyPublicKey  []byte
 	scriptProxyTransfer      []byte
@@ -104,14 +105,8 @@ func (s *Server) Run(ctx context.Context) {
 		status: "not_started",
 	}
 	go s.validateBalances(ctx)
-	feeAddr, err := hex.DecodeString(s.Chain.Contracts.FlowFees)
-	if err != nil {
-		log.Fatalf(
-			"Invalid FlowFees contract address %q: %s",
-			s.Chain.Contracts.FlowFees, err,
-		)
-	}
-	s.feeAddr = feeAddr
+	s.feeAddrs = s.Chain.Contracts.FeeAddresses()
+	go s.validateFeeReceivers(ctx)
 	s.genesis = s.Index.Genesis()
 	s.networks = []*types.NetworkIdentifier{{
 		Blockchain: "flow",
@@ -166,6 +161,7 @@ func (s *Server) compileScripts() {
 	s.scriptCreateProxyAccount = script.Compile("create_proxy_account", script.CreateProxyAccount, s.Chain)
 	s.scriptGetBalances = script.Compile("get_balances", script.GetBalances, s.Chain)
 	s.scriptGetBalancesBasic = script.Compile("get_balances_basic", script.GetBalancesBasic, s.Chain)
+	s.scriptGetFeeReceivers = script.Compile("get_fee_receivers", script.GetFeeReceivers, s.Chain)
 	s.scriptGetProxyNonce = script.Compile("get_proxy_nonce", script.GetProxyNonce, s.Chain)
 	s.scriptGetProxyPublicKey = script.Compile("get_proxy_public_key", script.GetProxyPublicKey, s.Chain)
 	s.scriptProxyTransfer = script.Compile("proxy_transfer", script.ProxyTransfer, s.Chain)
