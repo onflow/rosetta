@@ -418,6 +418,17 @@ outer:
 		data := &model.IndexedBlock{
 			Timestamp: uint64(block.Timestamp.AsTime().UnixNano()),
 		}
+		// feeReceivers tracks the child fee account addresses carried by a
+		// FlowFees.ChildFeeAccountsChanged event within this block, if any. If
+		// several events occur within the same block, the last one wins — each
+		// event carries the complete list of child fee accounts.
+		var feeReceivers [][]byte
+		// NOTE: We classify fee deposits against a block-scoped copy of
+		// the fee addresses so that a retry of the block (continue outer)
+		// reclassifies every transaction against the set as of the start of
+		// the block. The indexer's set is only updated once the block has been
+		// successfully indexed.
+		feeAddrs := i.feeAddrs
 		newAccounts := map[string]bool{}
 		newCounter := 0
 		transfers := 0
@@ -648,6 +659,58 @@ outer:
 						if i.isProxy(addr[:], newAccounts) {
 							proxyDeposits[string(addr[:])] += amount
 						}
+					case i.typFeeAcctsChanged:
+						// NOTE: The event carries the complete list of child fee
+						// accounts. We update our set of fee addresses here, in the
+						// first event loop, so that the fee deposits of this and all
+						// subsequent transactions are classified with the updated set
+						// — fee deduction runs after the transaction body that emits
+						// the event.
+						event, err := decodeEvent("FlowFees.ChildFeeAccountsChanged", evt, hash, height)
+						if err != nil {
+							skipCache = true
+							continue outer
+						}
+						fields := event.FieldsMappedByName()
+						if len(fields) != 1 {
+							log.Errorf(
+								"Found FlowFees.ChildFeeAccountsChanged event with %d fields in transaction %x in block %x at height %d",
+								len(fields), txnHash, hash, height,
+							)
+							skipCache = true
+							continue outer
+						}
+						// 'addresses' field
+						arr, ok := cadence.SearchFieldByName(
+							event,
+							"addresses",
+						).(cadence.Array)
+						if !ok {
+							log.Errorf(
+								"Unable to load addresses from FlowFees.ChildFeeAccountsChanged event in transaction %x in block %x at height %d",
+								txnHash, hash, height,
+							)
+							skipCache = true
+							continue outer
+						}
+						feeReceivers = [][]byte{}
+						for _, val := range arr.Values {
+							addr, ok := val.(cadence.Address)
+							if !ok {
+								log.Errorf(
+									"Unable to convert FlowFees.ChildFeeAccountsChanged element to an address (got %T) in transaction %x in block %x at height %d",
+									val, txnHash, hash, height,
+								)
+								skipCache = true
+								continue outer
+							}
+							feeReceivers = append(feeReceivers, addr[:])
+						}
+						feeAddrs = i.Chain.Contracts.FeeAddressesWith(feeReceivers)
+						log.Infof(
+							"Indexed FlowFees.ChildFeeAccountsChanged event in block %x at height %d: fee receivers are now %x",
+							hash, height, feeReceivers,
+						)
 					case i.typProxyTransferred:
 						// NOTE(tav): For all proxy accounts originated by us,
 						// we will only ever make transfers once we've found the
@@ -803,7 +866,7 @@ outer:
 							Receiver: receiver[:],
 							Type:     model.TransferType_DEPOSIT,
 						})
-						if i.feeAddrs[string(receiver[:])] {
+						if feeAddrs[string(receiver[:])] {
 							// NOTE(tav): When the deposit is to the fee
 							// address, just increment the fee amount.
 							fees += amount
@@ -1042,6 +1105,27 @@ outer:
 				}
 			}
 		}
+		if feeReceivers != nil {
+			// NOTE: We store the fee receiver update before indexing the
+			// block so that a crash in between is recovered by re-processing the
+			// block, which rewrites the same value.
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+				err = i.Store.SetFeeReceivers(height, feeReceivers)
+				if err == nil {
+					break
+				}
+				log.Errorf(
+					"Failed to store fee receivers from block %x at height %d: %s",
+					hash, height, err,
+				)
+				time.Sleep(10 * time.Millisecond)
+			}
+		}
 		for {
 			select {
 			case <-ctx.Done():
@@ -1068,6 +1152,9 @@ outer:
 		}
 		for acct, isProxy := range newAccounts {
 			i.accts[acct] = isProxy
+		}
+		if feeReceivers != nil {
+			i.feeAddrs = feeAddrs
 		}
 		i.mu.Lock()
 		i.lastIndexed.Hash = hash

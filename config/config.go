@@ -113,6 +113,24 @@ func (c *Contracts) FeeAddresses() map[string]bool {
 	return addrs
 }
 
+// FeeAddressesWith returns the set of accounts whose FLOW deposits represent
+// transaction fees after a FlowFees.ChildFeeAccountsChanged event carrying
+// the given child fee accounts: the FlowFees contract account plus the given
+// accounts. The map is keyed by the raw 8-byte address string.
+func (c *Contracts) FeeAddressesWith(children [][]byte) map[string]bool {
+	addr, err := hex.DecodeString(c.FlowFees)
+	if err != nil || len(addr) != 8 {
+		log.Fatalf("Invalid FlowFees contract address %q", c.FlowFees)
+	}
+	addrs := map[string]bool{
+		string(addr): true,
+	}
+	for _, child := range children {
+		addrs[string(child)] = true
+	}
+	return addrs
+}
+
 // Consensus defines the metadata needed to initialize a consensus follower for
 // a live spork.
 type Consensus struct {

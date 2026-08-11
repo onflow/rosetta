@@ -229,6 +229,48 @@ func (s *Server) setIndexedStateErr(format string, a ...interface{}) {
 	}
 }
 
+// currentFeeAddrs returns the set of fee addresses used to classify fee
+// deposits at the given indexed height: the configured fee addresses,
+// overridden by the most recent FlowFees.ChildFeeAccountsChanged event
+// indexed at or before that height, if any.
+func (s *Server) currentFeeAddrs(height uint64) map[string]bool {
+	children, err := s.Index.FeeReceiversAt(height)
+	if err != nil {
+		log.Errorf(
+			"Failed to get the indexed fee receivers at height %d, falling back to the configured fee addresses: %s",
+			height, err,
+		)
+		return s.feeAddrs
+	}
+	if children == nil {
+		return s.feeAddrs
+	}
+	return s.Chain.Contracts.FeeAddressesWith(children)
+}
+
+// setFeeValidationFallback records a successful validation against a FlowFees
+// contract that predates the concurrent fee collection upgrade: the FlowFees
+// account is the only fee receiver until the contract is upgraded.
+func (s *Server) setFeeValidationFallback() {
+	onchain := []string{s.Chain.Contracts.FlowFees}
+	s.feeValidationMu.Lock()
+	prev := s.feeValidation.status
+	s.feeValidation = &feeValidation{
+		onchain: onchain,
+		status:  validationSuccess,
+	}
+	s.feeValidationMu.Unlock()
+	// We only log on transitions so that the periodic re-checks don't flood
+	// the logs.
+	if prev != validationSuccess {
+		log.Infof(
+			"The FlowFees contract does not define getFeeReceiverAddresses (pre concurrent fee collection); "+
+				"falling back to the FlowFees account %s as the only fee receiver and continuing to poll for an upgrade",
+			onchain[0],
+		)
+	}
+}
+
 func (s *Server) getFeeValidationStatus() *feeValidation {
 	s.feeValidationMu.RLock()
 	defer s.feeValidationMu.RUnlock()

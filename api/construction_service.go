@@ -525,7 +525,11 @@ func (s *Server) ConstructionPreprocess(ctx context.Context, r *types.Constructi
 	}
 	// NOTE(tav): We explicitly error on transfers to a fee address so as to
 	// simplify our event processing logic.
-	if s.feeAddrs[string(intent.receiver)] {
+	feeAddrs := s.feeAddrs
+	if latest := s.Index.Latest(); latest != nil {
+		feeAddrs = s.currentFeeAddrs(latest.Height)
+	}
+	if feeAddrs[string(intent.receiver)] {
 		return nil, wrapErrorf(
 			errInvalidOpsIntent,
 			"cannot make transfers to the fee address: 0x%x",

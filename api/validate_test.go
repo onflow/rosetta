@@ -1,8 +1,12 @@
 package api
 
 import (
+	"errors"
 	"sync"
 	"testing"
+
+	"github.com/onflow/rosetta/config"
+	"github.com/onflow/rosetta/indexdb"
 )
 
 func TestValidationStatusString(t *testing.T) {
@@ -112,6 +116,86 @@ func TestFeeValidationConcurrentAccess(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+func TestIsMissingFeeReceiverFunc(t *testing.T) {
+	for name, tt := range map[string]struct {
+		err  error
+		want bool
+	}{
+		"missing member": {
+			err:  errors.New("rpc error: code = InvalidArgument desc = failed to execute script: error: value of type `&FlowFees` has no member `getFeeReceiverAddresses`"),
+			want: true,
+		},
+		"unavailable access node": {
+			err:  errors.New("rpc error: code = Unavailable desc = connection refused"),
+			want: false,
+		},
+		"unrelated member error": {
+			err:  errors.New("error: value of type `&FlowToken` has no member `getBalance`"),
+			want: false,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := isMissingFeeReceiverFunc(tt.err); got != tt.want {
+				t.Errorf("isMissingFeeReceiverFunc(%v) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFeeValidationFallback(t *testing.T) {
+	s := newFeeValidationServer()
+	s.Chain = &config.Chain{
+		Contracts: &config.Contracts{FlowFees: "912d5440f7e3769e"},
+	}
+	s.setFeeValidationFallback()
+	v := s.getFeeValidationStatus()
+	if v.status != validationSuccess {
+		t.Fatalf("status = %s, want success", v.status)
+	}
+	if len(v.onchain) != 1 || v.onchain[0] != "912d5440f7e3769e" {
+		t.Fatalf("onchain = %v, want [912d5440f7e3769e]", v.onchain)
+	}
+}
+
+func TestCurrentFeeAddrs(t *testing.T) {
+	store := indexdb.New(t.TempDir())
+	chain := &config.Chain{
+		Contracts: &config.Contracts{
+			FlowFees:     "912d5440f7e3769e",
+			FeeReceivers: []string{"e1ac6b2740d204c2"},
+		},
+	}
+	s := &Server{
+		Chain:    chain,
+		Index:    store,
+		feeAddrs: chain.Contracts.FeeAddresses(),
+	}
+	flowFees := []byte{0x91, 0x2d, 0x54, 0x40, 0xf7, 0xe3, 0x76, 0x9e}
+	configured := []byte{0xe1, 0xac, 0x6b, 0x27, 0x40, 0xd2, 0x04, 0xc2}
+	child := []byte{0x05, 0xcb, 0xd2, 0xfa, 0x51, 0x28, 0x04, 0x1d}
+
+	// Without any indexed event, the configured fee addresses apply.
+	addrs := s.currentFeeAddrs(100)
+	if !addrs[string(flowFees)] || !addrs[string(configured)] || addrs[string(child)] {
+		t.Fatalf("currentFeeAddrs without event = %v, want the configured fee addresses", addrs)
+	}
+
+	// An indexed event overrides the configured fee addresses.
+	if err := store.SetFeeReceivers(50, [][]byte{child}); err != nil {
+		t.Fatalf("SetFeeReceivers: %s", err)
+	}
+	addrs = s.currentFeeAddrs(100)
+	if !addrs[string(flowFees)] || !addrs[string(child)] || addrs[string(configured)] {
+		t.Fatalf("currentFeeAddrs with event = %v, want the FlowFees account and the event's child account", addrs)
+	}
+
+	// Events after the given height do not apply.
+	addrs = s.currentFeeAddrs(49)
+	if !addrs[string(configured)] || addrs[string(child)] {
+		t.Fatalf("currentFeeAddrs before the event = %v, want the configured fee addresses", addrs)
+	}
 }
 
 // TestFeeValidationFailureRecovery checks that a later successful check

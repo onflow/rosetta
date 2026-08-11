@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/onflow/cadence"
@@ -15,10 +16,11 @@ const (
 	feeValidateRecheckInterval = 10 * time.Minute // re-check interval after a definitive result
 )
 
-// validateFeeReceivers runs a background loop that checks the configured fee
-// addresses (the FlowFees contract account plus .contracts.fee_receivers)
+// validateFeeReceivers runs a background loop that checks the fee addresses
+// used to classify fee deposits (the configured fee addresses, overridden by
+// the most recent indexed FlowFees.ChildFeeAccountsChanged event, if any)
 // against the fee receiver accounts the FlowFees contract rotates deposits
-// across on chain. If an on-chain receiver is missing from the config, fee
+// across on chain. If an on-chain receiver is missing from that set, fee
 // deposits to it would be misclassified as ordinary transfers, so we log an
 // error and surface the failure via the fee_receiver_validation_status /call
 // method. Configured addresses that are no longer on chain are fine — they
@@ -62,25 +64,50 @@ func sleepCtx(ctx context.Context, d time.Duration) bool {
 	}
 }
 
-// checkFeeReceivers makes a single attempt at validating the configured fee
-// addresses against the on-chain fee receivers, and records the outcome in
-// the server's fee validation state. It returns false if the attempt failed
-// and should be retried.
+// checkFeeReceivers makes a single attempt at validating the fee addresses
+// used for classification against the on-chain fee receivers, and records the
+// outcome in the server's fee validation state. It returns false if the
+// attempt failed and should be retried.
 func (s *Server) checkFeeReceivers(ctx context.Context) bool {
-	// Pick a client on each attempt so a retry can land on a different
-	// access node if the previously selected one is unavailable.
-	client := s.DataAccessNodes.Client()
-	latest, err := client.LatestBlockHeader(ctx)
-	if err != nil {
+	// We validate at the latest indexed block (the genesis block if nothing
+	// has been indexed yet), rather than the latest block available on the
+	// Access API: the fee addresses only matter for the blocks the indexer is
+	// currently classifying, and this keeps the check consistent with the
+	// indexed fee receiver overrides.
+	latest := s.Index.Latest()
+	if latest == nil {
 		s.setFeeValidationRetrying(
-			"Failed to get the latest block header to validate fee receivers: %s", err,
+			"Failed to validate fee receivers: no block has been indexed yet",
 		)
 		return false
 	}
-	resp, err := client.Execute(ctx, latest.Id, s.scriptGetFeeReceivers, nil)
-	if err != nil {
+	// The latest indexed block may belong to a past spork while the indexer
+	// is catching up, so we use the access nodes of the spork containing it —
+	// and re-select a client on each attempt so a retry can land on a
+	// different access node if the previously selected one is unavailable.
+	spork := s.Chain.SporkFor(latest.Height)
+	if spork == nil {
 		s.setFeeValidationRetrying(
-			"Failed to execute the get_fee_receivers script: %s", err,
+			"Failed to validate fee receivers: the latest indexed block at height %d cannot be associated with any sporks in the config",
+			latest.Height,
+		)
+		return false
+	}
+	client := spork.AccessNodes.Client()
+	resp, err := client.Execute(ctx, latest.Hash, s.scriptGetFeeReceivers, nil)
+	if err != nil {
+		if isMissingFeeReceiverFunc(err) {
+			// The FlowFees contract predates the concurrent fee collection
+			// upgrade (onflow/flow-core-contracts#575): the FlowFees account
+			// is the only fee receiver until the contract is upgraded. We
+			// record this as a successful validation and keep polling so
+			// that a later upgrade is detected.
+			s.setFeeValidationFallback()
+			return true
+		}
+		s.setFeeValidationRetrying(
+			"Failed to execute the get_fee_receivers script at the latest indexed block %x (%d): %s",
+			latest.Hash, latest.Height, err,
 		)
 		return false
 	}
@@ -91,6 +118,7 @@ func (s *Server) checkFeeReceivers(ctx context.Context) bool {
 		)
 		return false
 	}
+	feeAddrs := s.currentFeeAddrs(latest.Height)
 	onchain := []string{}
 	missing := []string{}
 	for _, val := range arr.Values {
@@ -102,7 +130,7 @@ func (s *Server) checkFeeReceivers(ctx context.Context) bool {
 			return false
 		}
 		onchain = append(onchain, addr.String())
-		if !s.feeAddrs[string(addr.Bytes())] {
+		if !feeAddrs[string(addr.Bytes())] {
 			missing = append(missing, addr.String())
 		}
 	}
@@ -112,6 +140,18 @@ func (s *Server) checkFeeReceivers(ctx context.Context) bool {
 		s.setFeeValidationSuccess(onchain)
 	}
 	return true
+}
+
+// isMissingFeeReceiverFunc returns whether the script execution error
+// indicates that the FlowFees contract predates the concurrent fee collection
+// upgrade (onflow/flow-core-contracts#575), i.e. it does not define
+// getFeeReceiverAddresses. This is a deterministic script type-checking
+// failure, so retrying it would never succeed — unlike transient access node
+// errors.
+func isMissingFeeReceiverFunc(err error) bool {
+	msg := err.Error()
+	return strings.Contains(msg, "getFeeReceiverAddresses") &&
+		(strings.Contains(msg, "has no member") || strings.Contains(msg, "cannot find"))
 }
 
 // NOTE(tav): We exit with a fatal error if the on-chain state doesn't match

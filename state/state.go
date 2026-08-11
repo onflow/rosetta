@@ -64,6 +64,7 @@ type Indexer struct {
 	root                *stateSnapshot
 	sealedResults       map[string]string
 	synced              bool
+	typFeeAcctsChanged  string
 	typProxyCreated     string
 	typProxyDeposited   string
 	typProxyTransferred string
@@ -542,11 +543,21 @@ func (i *Indexer) initState() {
 		i.accts[string(acct[:])] = isProxy
 	}
 	i.feeAddrs = i.Chain.Contracts.FeeAddresses()
+	// The set of fee receivers recorded by the most recently indexed
+	// FlowFees.ChildFeeAccountsChanged event (at or before the last indexed
+	// height) overrides the configured default, so that fee receivers added on
+	// chain are picked up without a config update or a restart.
+	if children, err := i.Store.FeeReceiversAt(i.lastIndexed.Height); err != nil {
+		log.Fatalf("Failed to load fee receivers from the index database: %s", err)
+	} else if children != nil {
+		i.feeAddrs = i.Chain.Contracts.FeeAddressesWith(children)
+	}
 	i.originators = map[string]bool{}
 	for _, addr := range i.Chain.Originators {
 		i.originators[string(addr)] = true
 	}
 	i.sealedResults = map[string]string{}
+	i.typFeeAcctsChanged = fmt.Sprintf("A.%s.FlowFees.ChildFeeAccountsChanged", i.Chain.Contracts.FlowFees)
 	i.typProxyCreated = fmt.Sprintf("A.%s.FlowColdStorageProxy.Created", i.Chain.Contracts.FlowColdStorageProxy)
 	i.typProxyDeposited = fmt.Sprintf("A.%s.FlowColdStorageProxy.Deposited", i.Chain.Contracts.FlowColdStorageProxy)
 	i.typProxyTransferred = fmt.Sprintf("A.%s.FlowColdStorageProxy.Transferred", i.Chain.Contracts.FlowColdStorageProxy)
