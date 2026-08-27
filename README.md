@@ -375,9 +375,33 @@ config file:
 ```
 
   * The canonical list is returned by `FlowFees.getFeeReceiverAddresses()` on
-    chain. On startup, the server validates the configured addresses against
-    that list and exits with a fatal error if any on-chain receiver is
-    missing from the config.
+    chain. The server validates the configured addresses against that list in
+    the background: the script runs at the latest indexed block (the genesis
+    block if nothing has been indexed yet), retrying until an access node
+    responds, and then re-checking periodically so receivers added on chain
+    while the server is running are still detected. On networks whose FlowFees
+    contract predates the concurrent fee collection upgrade (and therefore
+    doesn't define `getFeeReceiverAddresses`), the FlowFees contract account
+    is treated as the only receiver, and the server keeps polling so that a
+    later upgrade is detected. If any on-chain receiver is missing from the
+    fee addresses used for classification, the server logs an error and
+    reports the mismatch via the `fee_receiver_validation_status` method of
+    the `/call` endpoint.
+
+  * The indexer also watches for `FlowFees.ChildFeeAccountsChanged` events and
+    stores them in the index database. The most recent such event overrides
+    the configured fee addresses from the block containing it onward, so receivers
+    added on chain are picked up automatically — no config update or restart
+    needed. (The configured addresses remain the base for chains where the
+    child fee accounts were registered without emitting the event, e.g.
+    testnet.)
+
+  * Note: if your index database contains blocks indexed before the
+    `fee_receivers` config was available (e.g. testnet blocks at or after
+    height 309507846 indexed with an older version), fee deposits to the child
+    fee accounts in those blocks will have been misclassified as ordinary
+    transfers. Use `resync_from` to reindex from before the on-chain upgrade
+    if you need those blocks classified correctly.
 
 * `data_dir: string`
 

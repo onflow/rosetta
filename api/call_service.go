@@ -24,6 +24,8 @@ func (s *Server) Call(ctx context.Context, r *types.CallRequest) (*types.CallRes
 		return s.balanceValidationStatus(ctx)
 	case callEcho:
 		return s.echo(r.Parameters)
+	case callFeeValidationStatus:
+		return s.feeReceiverValidationStatus()
 	case callLatestBlock:
 		return s.latestBlock(ctx, r.Parameters)
 	case callListAccounts:
@@ -176,38 +178,55 @@ func (s *Server) accountPublicKeys(ctx context.Context, params map[string]interf
 func (s *Server) balanceValidationStatus(ctx context.Context) (*types.CallResponse, *types.Error) {
 	v := s.getValidationStatus()
 	switch v.status {
-	case "failure":
+	case validationFailure:
 		return &types.CallResponse{
 			Result: map[string]interface{}{
 				"error":  v.err,
-				"status": v.status,
+				"status": v.status.String(),
 			},
 		}, nil
-	case "in_progress":
+	case validationInProgress:
 		return &types.CallResponse{
 			Result: map[string]interface{}{
 				"accounts": v.accounts,
 				"checked":  v.checked,
-				"status":   v.status,
+				"status":   v.status.String(),
 			},
 		}, nil
-	case "not_started":
+	case validationNotStarted:
 		return &types.CallResponse{
 			Result: map[string]interface{}{
-				"status": v.status,
+				"status": v.status.String(),
 			},
 		}, nil
-	case "success":
+	case validationSuccess:
 		return &types.CallResponse{
 			Result: map[string]interface{}{
 				"accounts": v.accounts,
-				"status":   v.status,
+				"status":   v.status.String(),
 			},
 		}, nil
 	default:
-		log.Fatalf("Unsupported validation status %q", v.status)
+		log.Fatalf("Unsupported validation status %d", int(v.status))
 		panic("unreachable code")
 	}
+}
+
+func (s *Server) feeReceiverValidationStatus() (*types.CallResponse, *types.Error) {
+	v := s.getFeeValidationStatus()
+	result := map[string]interface{}{
+		"status": v.status.String(),
+	}
+	if v.err != "" {
+		result["error"] = v.err
+	}
+	if v.onchain != nil {
+		result["fee_receivers"] = v.onchain
+	}
+	if v.missing != nil {
+		result["missing"] = v.missing
+	}
+	return &types.CallResponse{Result: result}, nil
 }
 
 func (s *Server) echo(params map[string]interface{}) (*types.CallResponse, *types.Error) {

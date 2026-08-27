@@ -26,23 +26,30 @@ var (
 )
 
 const (
-	accountPrefix     byte = 'a'
-	blockPrefix       byte = 'b'
-	hash2HeightPrefix byte = 'c'
-	height2HashPrefix byte = 'd'
-	isProxyPrefix     byte = 'p'
+	accountPrefix      byte = 'a'
+	blockPrefix        byte = 'b'
+	hash2HeightPrefix  byte = 'c'
+	height2HashPrefix  byte = 'd'
+	feeReceiversPrefix byte = 'f'
+	isProxyPrefix      byte = 'p'
 )
 
 // NOTE(tav): We store the blockchain data within Badger using the following
 // key/value structure:
 //
-//          accountKey a<acct><height-big-endian> = <amount-big-endian>
-//            blockKey b<height-big-endian> = model.IndexedBlock
-// blockHash2HeightKey c<block-hash> = <height-big-endian>
-// blockHeight2HashKey d<height-big-endian> = <block-hash>
-//          isProxyKey p<acct><height-big-endian> = 1
-//                     genesis = model.BlockMeta
-//                     latest = model.BlockMeta
+//           accountKey a<acct><height-big-endian> = <amount-big-endian>
+//             blockKey b<height-big-endian> = model.IndexedBlock
+//  blockHash2HeightKey c<block-hash> = <height-big-endian>
+//  blockHeight2HashKey d<height-big-endian> = <block-hash>
+//      feeReceiversKey f<height-big-endian> = <concatenated 8-byte addresses>
+//           isProxyKey p<acct><height-big-endian> = 1
+//                      genesis = model.BlockMeta
+//                      latest = model.BlockMeta
+//
+// The feeReceiversKey entries record the child fee account addresses carried
+// by FlowFees.ChildFeeAccountsChanged events, keyed by the height of the block
+// in which the event was emitted. The most recent entry at or before a height
+// overrides the configured default fee addresses for that height.
 
 // AccountInfo represents all the balance changes (block height, balance) for an
 // account and whether it's a proxy account or not.
@@ -280,6 +287,80 @@ func (s *Store) ExportAccounts(filename string) {
 	if err != nil {
 		log.Fatalf("Failed to write to %s: %s", filename, err)
 	}
+}
+
+// FeeReceiversAt returns the child fee account addresses recorded by the most
+// recent FlowFees.ChildFeeAccountsChanged event indexed at or before the given
+// height. It returns nil if no such event has been indexed, in which case the
+// configured fee addresses apply as-is.
+func (s *Store) FeeReceiversAt(height uint64) ([][]byte, error) {
+	key := make([]byte, 9)
+	key[0] = feeReceiversPrefix
+	binary.BigEndian.PutUint64(key[1:], height)
+	var addrs [][]byte
+	err := s.db.View(func(txn *badger.Txn) error {
+		it := txn.NewIterator(badger.IteratorOptions{
+			Reverse: true,
+		})
+		defer it.Close()
+		it.Seek(key)
+		if !it.ValidForPrefix(key[:1]) {
+			return nil
+		}
+		// NOTE: We initialize the result to a non-nil empty slice so that
+		// callers can distinguish an event carrying an empty address list (a
+		// reset to no child fee accounts) from no event having been indexed.
+		addrs = [][]byte{}
+		return it.Item().Value(func(val []byte) error {
+			if len(val)%8 != 0 {
+				return fmt.Errorf(
+					"indexdb: found malformed fee receivers value at height %d (length %d)",
+					binary.BigEndian.Uint64(it.Item().Key()[1:]), len(val),
+				)
+			}
+			for i := 0; i < len(val); i += 8 {
+				addr := make([]byte, 8)
+				copy(addr, val[i:i+8])
+				addrs = append(addrs, addr)
+			}
+			return nil
+		})
+	})
+	if err != nil {
+		return nil, fmt.Errorf(
+			"indexdb: failed to get fee receivers at height %d: %s", height, err,
+		)
+	}
+	return addrs, nil
+}
+
+// SetFeeReceivers records the child fee account addresses carried by a
+// FlowFees.ChildFeeAccountsChanged event indexed at the given height. It must
+// be called before Index for the same height so that a crash in between is
+// recovered by re-processing the block, which rewrites the same value.
+func (s *Store) SetFeeReceivers(height uint64, addrs [][]byte) error {
+	key := make([]byte, 9)
+	key[0] = feeReceiversPrefix
+	binary.BigEndian.PutUint64(key[1:], height)
+	val := make([]byte, 0, len(addrs)*8)
+	for _, addr := range addrs {
+		if len(addr) != 8 {
+			return fmt.Errorf(
+				"indexdb: invalid fee receiver address %x: expected 8 bytes, got %d",
+				addr, len(addr),
+			)
+		}
+		val = append(val, addr...)
+	}
+	err := s.db.Update(func(txn *badger.Txn) error {
+		return txn.Set(key, val)
+	})
+	if err != nil {
+		return fmt.Errorf(
+			"indexdb: failed to set fee receivers at height %d: %s", height, err,
+		)
+	}
+	return nil
 }
 
 // Genesis returns the stored genesis block metadata.
@@ -689,6 +770,28 @@ func (s *Store) ResetTo(base uint64) error {
 	})
 	if err != nil {
 		return fmt.Errorf("indexdb: failed to get proxy account keys to delete: %s", err)
+	}
+	err = s.db.View(func(txn *badger.Txn) error {
+		it := txn.NewIterator(badger.IteratorOptions{})
+		prefix := []byte{feeReceiversPrefix}
+		it.Seek(prefix)
+		for {
+			if !it.ValidForPrefix(prefix) {
+				break
+			}
+			item := it.Item()
+			key := item.Key()
+			height := binary.BigEndian.Uint64(key[1:])
+			if height > base {
+				delKeys = append(delKeys, item.KeyCopy(nil))
+			}
+			it.Next()
+		}
+		it.Close()
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("indexdb: failed to get fee receiver keys to delete: %s", err)
 	}
 	last := uint64(0)
 	err = s.db.View(func(txn *badger.Txn) error {
